@@ -1,0 +1,5 @@
+{
+  "name": "Dibakar AI",
+  "description": "A production-ready Full-Stack AI Search Engine similar to Perplexity AI.",
+  "requestFramePermissions": ["microphone", "camera", "geolocation"]
+}

@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user in the system with credits and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique identifier for the user." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "phoneNumber": { "type": "string", "description": "The user's phone number." },
+        "credits": { "type": "integer", "description": "The number of search credits remaining." },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "The user's role." },
+        "planExpiry": { "type": "string", "format": "date-time", "description": "The expiration date of the user's plan." }
+      },
+      "required": ["uid", "credits", "role"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Represents a conversation history.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique identifier for the chat." },
+        "userId": { "type": "string", "description": "The UID of the user who owns this chat." },
+        "title": { "type": "string", "description": "The title of the chat." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the chat was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the chat was last updated." }
+      },
+      "required": ["userId", "title", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Represents a single message in a chat.",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string", "description": "The ID of the chat this message belongs to." },
+        "role": { "type": "string", "enum": ["user", "assistant"], "description": "The role of the sender." },
+        "content": { "type": "string", "description": "The content of the message." },
+        "sources": { "type": "array", "items": { "type": "object" }, "description": "Search sources for assistant messages." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the message was sent." }
+      },
+      "required": ["chatId", "role", "content", "createdAt"]
+    },
+    "Feedback": {
+      "title": "Feedback",
+      "description": "Represents user feedback with a star rating.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user who gave the feedback." },
+        "userEmail": { "type": "string", "format": "email", "description": "The email of the user who gave the feedback." },
+        "rating": { "type": "integer", "description": "The star rating (1-5)." },
+        "comment": { "type": "string", "description": "An optional comment from the user." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the feedback was given." }
+      },
+      "required": ["userId", "rating", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles and credit management."
+    },
+    "/chats/{chatId}": {
+      "schema": "Chat",
+      "description": "Chat session metadata."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a chat session."
+    },
+    "/feedbacks/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "User feedback and ratings."
+    }
+  }
+}
