@@ -41,6 +41,12 @@ export default function App() {
       setIsDarkMode(false);
       document.documentElement.classList.add('light');
     }
+
+    // Check if permissions have been seen
+    const hasSeenPermissions = localStorage.getItem('hasSeenPermissions');
+    if (!hasSeenPermissions) {
+      setShowPermissionPopup(true);
+    }
   }, []);
 
   const toggleTheme = () => {
@@ -68,9 +74,18 @@ export default function App() {
     }
     testConnection();
 
+    let userUnsubscribe: (() => void) | null = null;
+
     console.log('Auth state listener initialized');
-    return onAuthStateChanged(auth, async (firebaseUser) => {
+    const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'No user');
+      
+      // Clean up previous user listener
+      if (userUnsubscribe) {
+        userUnsubscribe();
+        userUnsubscribe = null;
+      }
+
       if (firebaseUser) {
         try {
           const userRef = doc(db, 'users', firebaseUser.uid);
@@ -109,7 +124,7 @@ export default function App() {
           }
 
           // Real-time listener for credits and role
-          onSnapshot(userRef, (doc) => {
+          userUnsubscribe = onSnapshot(userRef, (doc) => {
             if (doc.exists()) {
               console.log('User profile updated from Firestore');
               setUser(doc.data() as UserProfile);
@@ -132,6 +147,11 @@ export default function App() {
         setLoading(false);
       }
     });
+
+    return () => {
+      authUnsubscribe();
+      if (userUnsubscribe) userUnsubscribe();
+    };
   }, []);
 
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
@@ -211,59 +231,87 @@ export default function App() {
       const historySnap = await getDocs(query(
         collection(db, 'chats', chatId, 'messages'),
         orderBy('createdAt', 'desc'),
-        limit(5)
+        limit(6) // Get 6 to skip the current user message if needed
       ));
-      const history = historySnap.docs.map(doc => doc.data()).reverse();
+      const history = historySnap.docs
+        .map(doc => doc.data())
+        .filter(m => m.content !== 'Thinking...') // Don't include the placeholder
+        .reverse();
 
-      // 4. Call Search API (Gemini in Frontend with Streaming)
+      // 4. Call Search API (Backend with Groq/Serper)
       const assistantMsgRef = await addDoc(collection(db, 'chats', chatId, 'messages'), {
         chatId,
         role: 'assistant',
-        content: '',
+        content: 'Thinking...',
         sources: [],
         createdAt: new Date().toISOString()
       });
 
-      const stream = generateSearchResponseStream(queryText, history);
-      let lastUpdate = Date.now();
-      
-      for await (const chunk of stream) {
-        // Update UI/DB every 200ms or when done to avoid too many writes
-        if (Date.now() - lastUpdate > 200 || chunk.done) {
-          await updateDoc(assistantMsgRef, {
-            content: chunk.text,
-            sources: chunk.sources
-          });
-          lastUpdate = Date.now();
-        }
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryText, history: history.slice(-5) })
+      });
+
+      let data;
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(`Server returned non-JSON response: ${text.slice(0, 100)}...`);
+      }
+
+      if (!response.ok) throw new Error(data.error || 'Search failed');
+
+      if (assistantMsgRef) {
+        await updateDoc(assistantMsgRef, {
+          content: data.answer,
+          sources: data.sources || []
+        });
       }
 
       // 6. Generate a better title if it's a new chat
       if (!currentChatId) {
         generateChatTitle(queryText).then(newTitle => {
           if (chatId) {
-            updateDoc(doc(db, 'chats', chatId), { title: newTitle });
+            updateDoc(doc(db, 'chats', chatId), { title: newTitle }).catch(e => console.error('Title update error:', e));
           }
-        });
+        }).catch(e => console.error('Title generation error:', e));
       }
 
       // 7. Deduct credit if not admin
-      if (user.role !== 'admin') {
-        await updateDoc(doc(db, 'users', user.uid), {
-          credits: increment(-1)
-        });
+      if (user && user.uid && user.role !== 'admin') {
+        try {
+          await updateDoc(doc(db, 'users', user.uid), {
+            credits: increment(-1)
+          });
+        } catch (creditErr) {
+          console.error('Failed to deduct credits:', creditErr);
+        }
       }
 
-      // 7. Increment global stats
-      await updateDoc(doc(db, 'stats', 'global'), {
-        totalRequests: increment(1)
-      }).catch(async () => {
-        // Create if doesn't exist
-        await setDoc(doc(db, 'stats', 'global'), { totalRequests: 1 });
-      });
-
-    } catch (error) {
+    } catch (error: any) {
       console.error('Search Error:', error);
+      // If we have a message reference, update it with the error
+      if (chatId) {
+        try {
+          const messagesSnap = await getDocs(query(
+            collection(db, 'chats', chatId, 'messages'),
+            orderBy('createdAt', 'desc'),
+            limit(1)
+          ));
+          
+          const lastMsg = messagesSnap.docs[0];
+          if (lastMsg && lastMsg.data().role === 'assistant') {
+            await updateDoc(lastMsg.ref, {
+              content: `Error: ${error.message || 'Something went wrong. Please try again later.'}`
+            });
+          }
+        } catch (updateErr) {
+          console.error('Failed to update error message in chat:', updateErr);
+        }
+      }
     } finally {
       setIsSearching(false);
     }

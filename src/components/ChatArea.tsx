@@ -18,19 +18,31 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="w-full mt-2">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "flex items-center gap-2 px-4 py-2 rounded-full border transition-all text-xs font-bold",
-          isOpen 
-            ? "bg-primary/10 border-primary text-primary" 
-            : "bg-surface border-border text-text-muted hover:bg-surface-hover hover:text-white"
+    <div className="w-full mb-2">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
+        {sources.slice(0, 3).map((source, i) => (
+          <a
+            key={i}
+            href={source.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-lg hover:border-primary transition-all shrink-0 max-w-[150px]"
+          >
+            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center shrink-0">
+              <Globe size={10} className="text-primary" />
+            </div>
+            <span className="text-[10px] font-bold truncate text-text-muted group-hover:text-primary">{source.title}</span>
+          </a>
+        ))}
+        {sources.length > 3 && (
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-surface border border-border rounded-lg hover:border-primary transition-all text-[10px] font-bold text-text-muted shrink-0"
+          >
+            +{sources.length - 3} more
+          </button>
         )}
-      >
-        <Globe size={14} />
-        {isOpen ? "Hide Sources" : `View ${sources.length} Sources`}
-      </button>
+      </div>
 
       <AnimatePresence>
         {isOpen && (
@@ -40,24 +52,23 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
               {sources.map((source, i) => (
                 <a
                   key={i}
                   href={source.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-3 bg-surface border border-border rounded-xl hover:border-primary transition-all group flex flex-col gap-1"
+                  className="p-2 bg-surface border border-border rounded-xl hover:border-primary transition-all group flex flex-col gap-1"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
-                      <Globe size={12} className="text-primary" />
-                      <span className="text-[9px] text-text-muted truncate uppercase tracking-widest font-bold">Source {i + 1}</span>
+                      <Globe size={10} className="text-primary" />
+                      <span className="text-[8px] text-text-muted truncate uppercase tracking-widest font-bold">Source {i + 1}</span>
                     </div>
                     <ExternalLink size={10} className="text-text-muted group-hover:text-primary" />
                   </div>
-                  <h4 className="text-xs font-bold truncate group-hover:text-primary">{source.title}</h4>
-                  <p className="text-[10px] text-text-muted line-clamp-2 mt-0.5 leading-relaxed">{source.snippet}</p>
+                  <h4 className="text-[10px] font-bold truncate group-hover:text-primary">{source.title}</h4>
                 </a>
               ))}
             </div>
@@ -251,7 +262,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
         >
           Dibakar AI
         </motion.h1>
-        <p className="text-text-muted max-w-md">
+        <p className="text-text-muted max-w-sm text-sm">
           The next generation AI search engine. Ask anything and get structured, accurate answers with real-time web sources.
         </p>
       </div>
@@ -262,7 +273,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
     <div 
       ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-8 relative"
+      className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-8 relative"
     >
       {/* Top Progress Bar for searching state */}
       <AnimatePresence>
@@ -303,44 +314,51 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
             key={msg.id || idx}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className={cn(
-              "flex gap-3 md:gap-4 max-w-4xl mx-auto",
-              msg.role === 'user' ? "justify-end" : "justify-start"
-            )}
+            className="w-full"
           >
-            {msg.role === 'assistant' && (
-              <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-                <Bot size={16} className="md:w-[18px] md:h-[18px]" />
-              </div>
-            )}
             <div className={cn(
-              "flex flex-col gap-2 max-w-[85%] md:max-w-none group",
-              msg.role === 'user' ? "items-end" : "items-start"
+              "flex gap-3 md:gap-6 max-w-2xl mx-auto w-full",
+              msg.role === 'user' ? "justify-end" : "justify-start"
             )}>
-              <div className={cn(
-                "p-3 md:p-4 rounded-2xl relative",
-                msg.role === 'user' ? "bg-primary text-white" : "bg-surface border border-border"
-              )}>
-                <div className="prose prose-sm md:prose-base max-w-none">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+              {msg.role === 'assistant' && (
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+                  <Bot size={14} className="text-primary" />
                 </div>
-                {msg.role === 'assistant' && (
-                  <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} />
-                    <CopyButton content={msg.content} />
-                  </div>
+              )}
+              <div className={cn(
+                "flex flex-col gap-4 group",
+                msg.role === 'user' ? "items-end max-w-[85%] ml-auto" : "items-start flex-1"
+              )}>
+                {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                  <SourcesToggle sources={msg.sources} />
                 )}
+                
+                <div className={cn(
+                  "relative",
+                  msg.role === 'user' 
+                    ? "px-4 py-2.5 rounded-2xl bg-primary text-white shadow-sm w-fit max-w-full" 
+                    : "pt-0 w-full"
+                )}>
+                  <div className={cn(
+                    "prose prose-sm md:prose-base max-w-none leading-relaxed",
+                    msg.role === 'assistant' ? "prose-headings:text-text prose-p:text-text/90" : "text-white font-medium"
+                  )}>
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} />
+                      <CopyButton content={msg.content} />
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {msg.sources && msg.sources.length > 0 && (
-                <SourcesToggle sources={msg.sources} />
+              {msg.role === 'user' && (
+                <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
+                  <User size={18} />
+                </div>
               )}
             </div>
-            {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
-                <User size={18} />
-              </div>
-            )}
           </motion.div>
         ))}
 
@@ -348,40 +366,45 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex gap-4 max-w-4xl mx-auto"
+            className="flex gap-3 md:gap-6 max-w-2xl mx-auto w-full"
           >
-            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-              <Loader2 size={18} className="text-primary animate-spin" />
+            <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1 border border-primary/20">
+              <motion.div
+                animate={{ 
+                  rotate: 360,
+                  scale: [1, 1.1, 1]
+                }}
+                transition={{ 
+                  rotate: { repeat: Infinity, duration: 2, ease: "linear" },
+                  scale: { repeat: Infinity, duration: 1, ease: "easeInOut" }
+                }}
+              >
+                <Bot size={14} className="text-primary" />
+              </motion.div>
             </div>
-            <div className="bg-surface/50 border border-border/50 p-4 rounded-2xl w-full backdrop-blur-sm">
-              <div className="flex flex-col gap-3">
+            <div className="bg-surface/30 border border-border/50 p-3 rounded-2xl rounded-tl-none w-fit min-w-[120px] backdrop-blur-md shadow-inner">
+              <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-3">
-                  <div className="flex gap-1">
-                    <motion.div 
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 1 }}
-                      className="w-1.5 h-1.5 bg-primary rounded-full" 
-                    />
-                    <motion.div 
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
-                      className="w-1.5 h-1.5 bg-primary rounded-full" 
-                    />
-                    <motion.div 
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
-                      className="w-1.5 h-1.5 bg-primary rounded-full" 
-                    />
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2].map((i) => (
+                      <motion.div
+                        key={i}
+                        animate={{ 
+                          y: [0, -4, 0],
+                          opacity: [0.3, 1, 0.3],
+                          scale: [1, 1.2, 1]
+                        }}
+                        transition={{ 
+                          repeat: Infinity, 
+                          duration: 0.8, 
+                          delay: i * 0.15,
+                          ease: "easeInOut"
+                        }}
+                        className="w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+                      />
+                    ))}
                   </div>
-                  <span className="text-sm font-bold text-primary uppercase tracking-widest">Thinking...</span>
-                </div>
-                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ x: "-100%" }}
-                    animate={{ x: "100%" }}
-                    transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                    className="h-full w-1/2 bg-gradient-to-r from-transparent via-primary to-transparent"
-                  />
+                  <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">Analyzing</span>
                 </div>
               </div>
             </div>

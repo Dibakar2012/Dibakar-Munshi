@@ -139,7 +139,7 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
   };
 
   return (
-    <div className="p-4 md:p-10 relative">
+    <div className="p-4 md:p-6 relative">
       <motion.form
         onSubmit={handleSubmit}
         initial={false}
@@ -152,7 +152,7 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
         }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
         className={cn(
-          "max-w-4xl mx-auto backdrop-blur-2xl rounded-[2rem] p-3 flex items-end gap-3 transition-all relative overflow-hidden border border-white/10",
+          "max-w-2xl mx-auto backdrop-blur-2xl rounded-3xl p-3 flex items-end gap-3 transition-all relative overflow-hidden border border-white/10",
           disabled && "opacity-50 cursor-not-allowed"
         )}
       >

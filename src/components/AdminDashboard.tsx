@@ -28,6 +28,10 @@ interface Stats {
     totalFeedbacks: number;
     ratingCounts: { [key: number]: number };
   };
+  todayLlamaTokens: number;
+  todaySerperRequests: number;
+  globalLlamaTokens: number;
+  globalSerperRequests: number;
 }
 
 interface Feedback {
@@ -71,9 +75,22 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const fetchStats = async () => {
     setStatsLoading(true);
     try {
-      // 1. Fetch Global Requests
-      const globalSnap = await getDoc(doc(db, 'stats', 'global'));
-      const totalRequests = globalSnap.exists() ? globalSnap.data().totalRequests : 0;
+      // 1. Fetch Global and Daily Stats
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const [globalSnap, dailySnap] = await Promise.all([
+        getDoc(doc(db, 'stats', 'global')),
+        getDoc(doc(db, 'stats', `daily_${today}`))
+      ]);
+
+      const globalData = globalSnap.exists() ? globalSnap.data() : {};
+      const dailyData = dailySnap.exists() ? dailySnap.data() : {};
+
+      const totalRequests = globalData.totalRequests || 0;
+      const globalLlamaTokens = globalData.llamaTokens || 0;
+      const globalSerperRequests = globalData.serperRequests || 0;
+      
+      const todayLlamaTokens = dailyData.llamaTokens || 0;
+      const todaySerperRequests = dailyData.serperRequests || 0;
 
       // 2. Fetch All Users (for stats)
       const usersSnap = await getDocs(collection(db, 'users'));
@@ -143,7 +160,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           averageRating,
           totalFeedbacks,
           ratingCounts
-        }
+        },
+        todayLlamaTokens,
+        todaySerperRequests,
+        globalLlamaTokens,
+        globalSerperRequests
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -223,11 +244,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 md:p-4 bg-black/95 backdrop-blur-xl">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-[#0a0a0a] border border-white/10 w-full max-w-6xl h-[92vh] rounded-[2.5rem] overflow-hidden flex flex-col shadow-[0_0_100px_rgba(59,130,246,0.1)]"
+        className="bg-[#0a0a0a] border border-white/10 w-[96%] max-w-6xl h-[96vh] rounded-3xl overflow-hidden flex flex-col shadow-[0_0_100px_rgba(59,130,246,0.1)]"
       >
         {/* Header */}
         <div className="p-8 border-b border-white/5 flex items-center justify-between bg-gradient-to-b from-white/5 to-transparent">
@@ -295,6 +316,47 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   icon={<Zap className="text-yellow-400" size={20} />} 
                   sub="Conversations started"
                 />
+              </div>
+
+              {/* API Usage Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 flex flex-col md:flex-row items-center gap-8">
+                  <div className="flex-1 space-y-2">
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <Activity size={20} className="text-primary" /> Today's API Usage
+                    </h3>
+                    <p className="text-xs text-white/40 uppercase tracking-widest">Real-time tracking of Llama & Serper</p>
+                  </div>
+                  <div className="flex gap-6">
+                    <div className="text-center px-6 py-4 bg-black/40 rounded-2xl border border-white/5">
+                      <p className="text-2xl font-black text-blue-400 tracking-tighter">{stats.todayLlamaTokens.toLocaleString()}</p>
+                      <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Llama Tokens</p>
+                    </div>
+                    <div className="text-center px-6 py-4 bg-black/40 rounded-2xl border border-white/5">
+                      <p className="text-2xl font-black text-purple-400 tracking-tighter">{stats.todaySerperRequests.toLocaleString()}</p>
+                      <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Serper Requests</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 flex flex-col md:flex-row items-center gap-8">
+                  <div className="flex-1 space-y-2">
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      <Activity size={20} className="text-green-400" /> Global API Usage
+                    </h3>
+                    <p className="text-xs text-white/40 uppercase tracking-widest">Lifetime consumption of external APIs</p>
+                  </div>
+                  <div className="flex gap-6">
+                    <div className="text-center px-6 py-4 bg-black/40 rounded-2xl border border-white/5">
+                      <p className="text-2xl font-black text-blue-400 tracking-tighter">{stats.globalLlamaTokens.toLocaleString()}</p>
+                      <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Llama Tokens</p>
+                    </div>
+                    <div className="text-center px-6 py-4 bg-black/40 rounded-2xl border border-white/5">
+                      <p className="text-2xl font-black text-purple-400 tracking-tighter">{stats.globalSerperRequests.toLocaleString()}</p>
+                      <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Serper Requests</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Charts Row */}

@@ -61,7 +61,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="relative w-full max-w-md bg-surface border border-border rounded-[2rem] p-6 md:p-8 shadow-2xl overflow-hidden"
+        className="relative w-[92%] max-w-[400px] bg-surface border border-border rounded-3xl p-6 md:p-8 shadow-2xl overflow-hidden"
       >
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-secondary to-primary" />
         

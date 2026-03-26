@@ -32,8 +32,18 @@ service cloud.firestore {
     // User profiles
     match /users/{uid} {
       allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && isValidUser(request.resource.data) && request.resource.data.credits == 10 && request.resource.data.role == 'user';
-      allow update: if isAdmin() || (isOwner(uid) && request.resource.data.credits == resource.data.credits && request.resource.data.role == resource.data.role);
+      allow create: if isOwner(uid) && isValidUser(request.resource.data) && (
+        (request.resource.data.credits == 10 && request.resource.data.role == 'user') ||
+        (isAdmin() && request.resource.data.role == 'admin')
+      );
+      allow update: if isAdmin() || (
+        isOwner(uid) && 
+        request.resource.data.role == resource.data.role &&
+        (
+          request.resource.data.credits == resource.data.credits ||
+          request.resource.data.credits == resource.data.credits - 1
+        )
+      );
     }
 
     // Chats
@@ -53,6 +63,11 @@ service cloud.firestore {
     match /feedbacks/{feedbackId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+    
+    // Stats
+    match /stats/{statId} {
+      allow read, write: if true;
     }
     
     // Global Admin Access

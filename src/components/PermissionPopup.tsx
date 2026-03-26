@@ -24,6 +24,13 @@ export default function PermissionPopup({ onClose }: PermissionPopupProps) {
       permission: 'microphone'
     },
     {
+      id: 'location',
+      title: 'Location Access',
+      description: 'Allow access to your location for better search results.',
+      icon: <Shield className="text-green-500" size={24} />,
+      permission: 'geolocation'
+    },
+    {
       id: 'files',
       title: 'File Storage',
       description: 'Allow access to store and retrieve files.',
@@ -37,12 +44,20 @@ export default function PermissionPopup({ onClose }: PermissionPopupProps) {
     
     try {
       if (current.id === 'camera') {
-        await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(track => track.stop());
       } else if (current.id === 'microphone') {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+      } else if (current.id === 'location') {
+        await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject);
+        });
+      } else if (current.id === 'files') {
+        if (navigator.storage && navigator.storage.persist) {
+          await navigator.storage.persist();
+        }
       }
-      // File storage doesn't have a direct prompt like this in standard web, 
-      // but we acknowledge it.
     } catch (err) {
       console.warn(`Permission for ${current.id} denied or failed:`, err);
     }
@@ -59,7 +74,7 @@ export default function PermissionPopup({ onClose }: PermissionPopupProps) {
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-surface border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+        className="bg-surface border border-border w-[92%] max-w-[400px] rounded-3xl shadow-2xl overflow-hidden"
       >
         <div className="p-6 border-b border-border flex items-center justify-between bg-surface-hover">
           <div className="flex items-center gap-3">

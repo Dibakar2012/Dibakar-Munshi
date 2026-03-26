@@ -1,14 +1,19 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CreditCard, Zap, CheckCircle2, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
+import PremiumRequestModal from './PremiumRequestModal';
+import { auth } from '../lib/firebase';
 
 interface PaywallProps {
   onClose?: () => void;
 }
 
 export default function Paywall({ onClose }: PaywallProps) {
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const userEmail = auth.currentUser?.email;
+
   const handlePay = () => {
-    window.location.href = 'tel:9242959903';
+    setIsRequestModalOpen(true);
   };
 
   return (
@@ -24,7 +29,7 @@ export default function Paywall({ onClose }: PaywallProps) {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="max-w-2xl w-full bg-surface border border-border rounded-[2rem] p-6 md:p-10 text-center shadow-2xl my-auto"
+        className="max-w-2xl w-[92%] bg-surface border border-border rounded-3xl p-6 md:p-10 text-center shadow-2xl my-auto"
       >
         <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
           <Zap className="text-primary" size={24} />
@@ -77,6 +82,16 @@ export default function Paywall({ onClose }: PaywallProps) {
           </p>
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {isRequestModalOpen && (
+          <PremiumRequestModal 
+            isOpen={isRequestModalOpen} 
+            onClose={() => setIsRequestModalOpen(false)} 
+            userEmail={userEmail}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

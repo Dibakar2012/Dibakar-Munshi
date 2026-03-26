@@ -52,6 +52,17 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "When the feedback was given." }
       },
       "required": ["userId", "rating", "createdAt"]
+    },
+    "Stats": {
+      "title": "Stats",
+      "description": "Represents global or daily usage statistics.",
+      "type": "object",
+      "properties": {
+        "totalRequests": { "type": "integer", "description": "Total number of requests." },
+        "llamaTokens": { "type": "integer", "description": "Total Llama tokens used." },
+        "serperRequests": { "type": "integer", "description": "Total Serper.dev requests." },
+        "date": { "type": "string", "description": "The date for daily stats (YYYY-MM-DD)." }
+      }
     }
   },
   "firestore": {
@@ -70,6 +81,10 @@
     "/feedbacks/{feedbackId}": {
       "schema": "Feedback",
       "description": "User feedback and ratings."
+    },
+    "/stats/{statId}": {
+      "schema": "Stats",
+      "description": "Global and daily usage statistics."
     }
   }
 }

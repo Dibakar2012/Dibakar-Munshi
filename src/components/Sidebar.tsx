@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { collection, query, where, orderBy, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Chat } from '../types';
@@ -23,17 +24,34 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    let unsubscribeSnapshot: (() => void) | null = null;
 
-    const q = query(
-      collection(db, 'chats'),
-      where('userId', '==', auth.currentUser.uid),
-      orderBy('createdAt', 'desc')
-    );
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
 
-    return onSnapshot(q, (snapshot) => {
-      setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat)));
+      if (!user) {
+        setChats([]);
+        return;
+      }
+
+      const q = query(
+        collection(db, 'chats'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      );
+
+      unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+        setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat)));
+      });
     });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, []);
 
   const groupChats = () => {
