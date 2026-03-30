@@ -3,6 +3,7 @@ export interface UserProfile {
   name?: string;
   email?: string;
   phoneNumber?: string;
+  photoURL?: string;
   credits: number;
   role: 'user' | 'admin';
   planExpiry?: string;
@@ -37,4 +38,15 @@ export interface SearchSource {
 export interface SearchResponse {
   answer: string;
   sources: SearchSource[];
+}
+
+export interface PremiumRequest {
+  id: string;
+  userId?: string;
+  name: string;
+  email: string;
+  phone: string;
+  plan: '35' | '99';
+  status: 'pending' | 'completed' | 'rejected';
+  createdAt: any;
 }

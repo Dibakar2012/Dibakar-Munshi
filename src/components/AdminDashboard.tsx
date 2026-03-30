@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, updateDoc, increment, getDoc, limit, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { UserProfile, Chat } from '../types';
-import { Search, User, CreditCard, Calendar, X, PlusCircle, TrendingUp, Users, Zap, ShoppingBag, BarChart3, ArrowUpRight, Activity, LayoutDashboard, RefreshCw, CheckCircle2, AlertCircle, Star, MessageSquarePlus, Loader2 } from 'lucide-react';
+import { UserProfile, Chat, PremiumRequest } from '../types';
+import { Search, User, CreditCard, Calendar, X, PlusCircle, TrendingUp, Users, Zap, ShoppingBag, BarChart3, ArrowUpRight, Activity, LayoutDashboard, RefreshCw, CheckCircle2, AlertCircle, Star, MessageSquarePlus, Loader2, MoreVertical, Check, Trash2, Shield, ShieldAlert, ExternalLink, Mail, Phone, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { format, subDays, startOfDay, isAfter } from 'date-fns';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
+import { deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -33,6 +34,7 @@ interface Stats {
   globalLlamaTokens: number;
   globalSerperRequests: number;
   usageData: { date: string; llamaTokens: number; serperRequests: number }[];
+  requestsData: { date: string; count: number }[];
 }
 
 interface Feedback {
@@ -54,11 +56,64 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [injectingId, setInjectingId] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [feedbacksLoading, setFeedbacksLoading] = useState(false);
+  const [premiumRequests, setPremiumRequests] = useState<PremiumRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStats();
     fetchFeedbacks();
+    fetchPremiumRequests();
   }, []);
+
+  const fetchPremiumRequests = async () => {
+    setRequestsLoading(true);
+    try {
+      const q = query(collection(db, 'premium_requests'), orderBy('createdAt', 'desc'), limit(20));
+      const snap = await getDocs(q);
+      setPremiumRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PremiumRequest)));
+    } catch (error) {
+      console.error('Error fetching premium requests:', error);
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  const updateRequestStatus = async (requestId: string, status: 'completed' | 'rejected') => {
+    try {
+      await updateDoc(doc(db, 'premium_requests', requestId), { status });
+      setPremiumRequests(prev => prev.map(req => req.id === requestId ? { ...req, status } : req));
+      toast.success(`Request marked as ${status}`);
+    } catch (error) {
+      console.error('Error updating request status:', error);
+      toast.error('Failed to update status');
+    }
+  };
+
+  const deleteUser = async (uid: string) => {
+    if (!window.confirm('Are you sure you want to delete this user? This action is irreversible.')) return;
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+      setFoundUsers(prev => prev.filter(u => u.uid !== uid));
+      toast.success('User deleted successfully');
+      fetchStats();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast.error('Failed to delete user');
+    }
+  };
+
+  const toggleAdmin = async (user: UserProfile) => {
+    const newRole = user.role === 'admin' ? 'user' : 'admin';
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { role: newRole });
+      setFoundUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, role: newRole } : u));
+      toast.success(`User role updated to ${newRole}`);
+    } catch (error) {
+      console.error('Error updating role:', error);
+      toast.error('Failed to update role');
+    }
+  };
 
   const fetchFeedbacks = async () => {
     setFeedbacksLoading(true);
@@ -155,9 +210,12 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         return {
           date: format(date, 'MMM dd'),
           llamaTokens: data.llamaTokens || 0,
-          serperRequests: data.serperRequests || 0
+          serperRequests: data.serperRequests || 0,
+          totalRequests: data.totalRequests || 0
         };
       });
+
+      const requestsData = usageData.map(d => ({ date: d.date, count: d.totalRequests }));
 
       // 7. Feedback Stats
       const feedbackSnap = await getDocs(collection(db, 'feedbacks'));
@@ -192,7 +250,8 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         todaySerperRequests,
         globalLlamaTokens,
         globalSerperRequests,
-        usageData
+        usageData,
+        requestsData
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -403,40 +462,30 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
               {/* Charts Row */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-                <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 relative overflow-hidden group">
-                  <div className="flex items-center justify-between mb-6 md:mb-8">
-                    <div>
-                      <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2">
-                        <BarChart3 size={18} className="text-primary" /> User Acquisition
-                      </h3>
-                      <p className="text-[10px] md:text-xs text-white/40">Last 7 days</p>
-                    </div>
-                  </div>
-                  <div className="h-[200px] md:h-[280px] w-full">
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col">
+                  <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
+                    <ShoppingBag size={18} className="text-primary" /> Plan Distribution
+                  </h3>
+                  <div className="h-[200px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={stats.growthData}>
-                        <defs>
-                          <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                        <XAxis 
-                          dataKey="date" 
-                          stroke="#ffffff20" 
-                          fontSize={8} 
-                          tickLine={false} 
-                          axisLine={false} 
-                          dy={10}
-                        />
-                        <YAxis 
-                          stroke="#ffffff20" 
-                          fontSize={8} 
-                          tickLine={false} 
-                          axisLine={false} 
-                          dx={-10}
-                        />
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: '₹35 Starter', value: stats.plan35Count },
+                            { name: '₹99 Pro', value: stats.plan99Count },
+                            { name: 'Free Tier', value: stats.totalUsers - stats.premiumUsers }
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={70}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          <Cell fill="#3b82f6" />
+                          <Cell fill="#a855f7" />
+                          <Cell fill="rgba(255,255,255,0.1)" />
+                        </Pie>
                         <Tooltip 
                           contentStyle={{ 
                             backgroundColor: '#0f0f0f', 
@@ -445,37 +494,61 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                             fontSize: '10px'
                           }}
                         />
-                        <Area 
-                          type="monotone" 
-                          dataKey="count" 
-                          stroke="#3b82f6" 
-                          fillOpacity={1} 
-                          fill="url(#colorCount)" 
-                          strokeWidth={3} 
-                        />
-                      </AreaChart>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-4">
+                    <div className="text-center">
+                      <p className="text-xs font-black text-blue-400">{stats.plan35Count}</p>
+                      <p className="text-[8px] text-white/40 uppercase tracking-widest">₹35</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-black text-purple-400">{stats.plan99Count}</p>
+                      <p className="text-[8px] text-white/40 uppercase tracking-widest">₹99</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-black text-white/60">{stats.totalUsers - stats.premiumUsers}</p>
+                      <p className="text-[8px] text-white/40 uppercase tracking-widest">Free</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col">
+                  <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
+                    <Activity size={18} className="text-primary" /> Requests (7D)
+                  </h3>
+                  <div className="h-[200px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.requestsData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                        <XAxis dataKey="date" stroke="#ffffff20" fontSize={8} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#ffffff20" fontSize={8} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f0f0f', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '10px' }} />
+                        <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={15} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
 
                 <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col">
                   <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
-                    <ShoppingBag size={18} className="text-primary" /> Revenue Mix
+                    <TrendingUp size={18} className="text-primary" /> Growth (7D)
                   </h3>
-                  <div className="space-y-6 md:space-y-8 flex-1 flex flex-col justify-center">
-                    <PlanStat label="₹35 Starter" count={stats.plan35Count} total={stats.totalUsers} color="bg-blue-500" icon={<Zap size={10} />} />
-                    <PlanStat label="₹99 Pro" count={stats.plan99Count} total={stats.totalUsers} color="bg-purple-500" icon={<Zap size={10} />} />
-                    <PlanStat label="Free Tier" count={stats.totalUsers - stats.premiumUsers} total={stats.totalUsers} color="bg-white/20" icon={<User size={10} />} />
-                    
-                    <div className="mt-2 pt-4 md:pt-6 border-t border-white/5">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">Conversion</span>
-                        <span className="text-lg font-black text-primary">{stats.premiumPercentage}%</span>
-                      </div>
-                      <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary" style={{ width: `${stats.premiumPercentage}%` }} />
-                      </div>
-                    </div>
+                  <div className="h-[200px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={stats.growthData}>
+                        <defs>
+                          <linearGradient id="colorGrowth" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="date" stroke="#ffffff20" fontSize={8} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#ffffff20" fontSize={8} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f0f0f', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '10px' }} />
+                        <Area type="monotone" dataKey="count" stroke="#3b82f6" fillOpacity={1} fill="url(#colorGrowth)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               </div>
@@ -696,8 +769,12 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 relative z-10">
                       <div className="flex items-center gap-3 md:gap-4">
-                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-primary/20 transition-all">
-                          <User className="text-white/20 group-hover:text-primary/40 transition-all w-6 h-6 md:w-8 md:h-8" />
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl md:rounded-2xl bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-primary/20 transition-all overflow-hidden">
+                          {user.photoURL ? (
+                            <img src={user.photoURL} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <User className="text-white/20 group-hover:text-primary/40 transition-all w-6 h-6 md:w-8 md:h-8" />
+                          )}
                         </div>
                         <div className="min-w-0">
                           <h4 className="font-bold text-fluid-base md:text-lg truncate max-w-[150px] md:max-w-[200px]">{user.email || user.phoneNumber}</h4>
@@ -717,11 +794,69 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                           </div>
                         </div>
                       </div>
-                      <div className="text-left sm:text-right">
-                        <div className="text-fluid-xl md:text-3xl font-black text-primary tracking-tighter flex items-center sm:justify-end gap-2">
-                          <CreditCard className="opacity-40 w-5 h-5 md:w-6 md:h-6" /> {user.credits}
+                      <div className="flex items-start gap-4">
+                        <div className="text-left sm:text-right">
+                          <div className="text-fluid-xl md:text-3xl font-black text-primary tracking-tighter flex items-center sm:justify-end gap-2">
+                            <CreditCard className="opacity-40 w-5 h-5 md:w-6 md:h-6" /> {user.credits}
+                          </div>
+                          <p className="text-[8px] md:text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Credits</p>
                         </div>
-                        <p className="text-[8px] md:text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Credits</p>
+                        
+                        {/* 3 Dots Menu */}
+                        <div className="relative">
+                          <button 
+                            onClick={() => setActiveMenuId(activeMenuId === user.uid ? null : user.uid)}
+                            className="p-2 hover:bg-white/10 rounded-lg transition-all"
+                          >
+                            <MoreVertical size={20} className="text-white/40" />
+                          </button>
+                          
+                          <AnimatePresence>
+                            {activeMenuId === user.uid && (
+                              <>
+                                <div 
+                                  className="fixed inset-0 z-40" 
+                                  onClick={() => setActiveMenuId(null)}
+                                />
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                  className="absolute right-0 mt-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden"
+                                >
+                                  <button 
+                                    onClick={() => { toggleAdmin(user); setActiveMenuId(null); }}
+                                    className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-white/5 flex items-center gap-3 transition-all"
+                                  >
+                                    {user.role === 'admin' ? <ShieldAlert size={16} className="text-red-400" /> : <Shield size={16} className="text-primary" />}
+                                    {user.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                                  </button>
+                                  <button 
+                                    onClick={() => { window.open(`mailto:${user.email}`); setActiveMenuId(null); }}
+                                    className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-white/5 flex items-center gap-3 transition-all"
+                                  >
+                                    <Mail size={16} className="text-blue-400" />
+                                    Email User
+                                  </button>
+                                  <button 
+                                    onClick={() => { toast.info(`Chat history for ${user.email || user.uid} is being fetched...`); setActiveMenuId(null); }}
+                                    className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-white/5 flex items-center gap-3 transition-all"
+                                  >
+                                    <MessageSquarePlus size={16} className="text-green-400" />
+                                    View Chats
+                                  </button>
+                                  <button 
+                                    onClick={() => { deleteUser(user.uid); setActiveMenuId(null); }}
+                                    className="w-full px-4 py-3 text-left text-xs font-bold hover:bg-red-500/10 text-red-500 flex items-center gap-3 transition-all"
+                                  >
+                                    <Trash2 size={16} />
+                                    Delete User
+                                  </button>
+                                </motion.div>
+                              </>
+                            )}
+                          </AnimatePresence>
+                        </div>
                       </div>
                     </div>
 
@@ -787,6 +922,99 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     <p className="text-[10px] md:text-sm text-white/40">No users found for "{searchTerm}"</p>
                   </div>
                 </motion.div>
+              )}
+            </div>
+          </div>
+
+          {/* Subscription Requests Section */}
+          <div className="space-y-6 md:space-y-8 pb-12">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-fluid-xl md:text-2xl font-black tracking-tighter uppercase">Subscription Requests</h3>
+                <p className="text-[10px] md:text-xs text-white/40">Recent WhatsApp & Dashboard requests</p>
+              </div>
+              <button 
+                onClick={fetchPremiumRequests}
+                className="p-2 hover:bg-white/5 rounded-xl transition-all border border-white/5"
+              >
+                <RefreshCw size={18} className={cn(requestsLoading && "animate-spin")} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+              {requestsLoading && premiumRequests.length === 0 ? (
+                [...Array(3)].map((_, i) => (
+                  <div key={i} className="h-48 bg-white/5 animate-pulse rounded-[2rem] border border-white/5" />
+                ))
+              ) : premiumRequests.length === 0 ? (
+                <div className="col-span-full py-12 text-center bg-white/[0.02] rounded-[2rem] border border-dashed border-white/10">
+                  <ShoppingBag className="mx-auto mb-4 text-white/10" size={32} />
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/20">No pending requests</p>
+                </div>
+              ) : (
+                premiumRequests.map((req) => (
+                  <motion.div
+                    key={req.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn(
+                      "bg-white/5 border p-6 rounded-[2rem] space-y-4 transition-all relative overflow-hidden group",
+                      req.status === 'pending' ? "border-primary/20" : "border-white/5 opacity-60"
+                    )}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                          <User size={20} className="text-primary" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm truncate max-w-[120px]">{req.name}</h4>
+                          <p className="text-[10px] text-white/40 font-mono">{req.phone}</p>
+                        </div>
+                      </div>
+                      <div className={cn(
+                        "px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest",
+                        req.plan === '99' ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"
+                      )}>
+                        ₹{req.plan}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-[10px] text-white/60">
+                        <Mail size={12} className="text-white/20" />
+                        <span className="truncate">{req.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-white/60">
+                        <Clock size={12} className="text-white/20" />
+                        <span>{req.createdAt ? format(req.createdAt.toDate(), 'MMM dd, HH:mm') : 'Just now'}</span>
+                      </div>
+                    </div>
+
+                    {req.status === 'pending' && (
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => updateRequestStatus(req.id, 'completed')}
+                          className="flex-1 bg-primary hover:bg-blue-600 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                        >
+                          <Check size={14} /> Complete
+                        </button>
+                        <button
+                          onClick={() => updateRequestStatus(req.id, 'rejected')}
+                          className="px-4 bg-white/5 hover:bg-red-500/10 hover:text-red-500 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+
+                    {req.status !== 'pending' && (
+                      <div className="pt-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-green-400">
+                        <CheckCircle2 size={14} /> {req.status}
+                      </div>
+                    )}
+                  </motion.div>
+                ))
               )}
             </div>
           </div>

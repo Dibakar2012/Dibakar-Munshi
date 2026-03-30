@@ -197,6 +197,23 @@ const startServer = async () => {
         console.warn("CALLMEBOT_API_KEY not set. WhatsApp notification skipped.");
       }
 
+      // 4. Save to Firestore for Admin Dashboard
+      if (db) {
+        try {
+          await db.collection('premium_requests').add({
+            name,
+            email,
+            phone,
+            plan,
+            status: 'pending',
+            createdAt: FieldValue.serverTimestamp()
+          });
+          console.log("Premium request saved to Firestore");
+        } catch (dbErr) {
+          console.error("Failed to save premium request to Firestore:", dbErr);
+        }
+      }
+
       if (process.env.GMAIL_PASS) {
         await transporter.sendMail(adminMailOptions);
         await transporter.sendMail(userMailOptions);
@@ -319,7 +336,9 @@ const startServer = async () => {
 
       // 3. Call Groq (Llama-3)
       console.log("Calling Groq...");
-      const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. Do NOT include source links or URLs in your response text, as they will be handled separately by the UI.
+      const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. 
+      
+      CRITICAL: Do NOT include any "Sources", "References", or "Links" section at the end of your response. Do NOT include URLs or bracketed citations like [1], [2] in your text. The UI will handle displaying the sources separately. Your job is ONLY to provide the synthesized answer text.
       
       Context:
       ${context || "No web context needed for this query."}`;
