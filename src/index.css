@@ -6,21 +6,25 @@
   --color-surface-hover: #252a33;
   --color-border: #2e343f;
   --color-primary: #3b82f6;
-  --color-secondary: #8b5cf6;
+  --color-secondary: #60a5fa;
   --color-text-muted: #9ca3af;
   --color-text: #ffffff;
+  --color-accent: #2563eb;
+  --color-accent-soft: rgba(37, 99, 235, 0.1);
   color-scheme: dark;
 }
 
 .light {
-  --color-background: #f8fafc;
+  --color-background: #f0f7ff;
   --color-surface: #ffffff;
-  --color-surface-hover: #f1f5f9;
-  --color-border: #e2e8f0;
-  --color-primary: #2563eb;
-  --color-secondary: #7c3aed;
-  --color-text-muted: #64748b;
-  --color-text: #0f172a;
+  --color-surface-hover: #e0f2fe;
+  --color-border: #bae6fd;
+  --color-primary: #0284c7;
+  --color-secondary: #0ea5e9;
+  --color-text-muted: #0369a1;
+  --color-text: #0c4a6e;
+  --color-accent: #0284c7;
+  --color-accent-soft: rgba(2, 132, 199, 0.1);
   color-scheme: light;
 }
 
@@ -33,6 +37,7 @@
   --color-secondary: var(--color-secondary);
   --color-text-muted: var(--color-text-muted);
   --color-text: var(--color-text);
+  --color-accent: var(--color-accent);
 }
 
 /* Mobile optimizations */
@@ -42,24 +47,84 @@
     touch-action: manipulation;
     overflow-x: hidden;
     height: 100%;
+    scroll-behavior: smooth;
   }
   
   body {
     @apply bg-background text-text font-sans transition-colors duration-300;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    overscroll-behavior-y: none;
+    overscroll-behavior: none;
     height: 100%;
     min-height: calc(var(--vh, 1vh) * 100);
-    @apply select-none;
+    @apply select-none overflow-hidden;
+    position: fixed;
+    width: 100%;
+  }
+
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
   }
 }
 
-/* Glassmorphism for search bar */
+/* Fluid Typography & Spacing */
+:root {
+  --fluid-spacing: clamp(0.75rem, 3vw, 1.5rem);
+  --fluid-font-size-sm: clamp(0.75rem, 2vw, 0.875rem);
+  --fluid-font-size-base: clamp(0.875rem, 2.5vw, 1rem);
+  --fluid-font-size-lg: clamp(1rem, 3vw, 1.25rem);
+  --fluid-font-size-xl: clamp(1.25rem, 4vw, 2rem);
+  --fluid-font-size-2xl: clamp(1.5rem, 5vw, 3rem);
+}
+
+.text-fluid-sm { font-size: var(--fluid-font-size-sm); }
+.text-fluid-base { font-size: var(--fluid-font-size-base); }
+.text-fluid-lg { font-size: var(--fluid-font-size-lg); }
+.text-fluid-xl { font-size: var(--fluid-font-size-xl); }
+.text-fluid-2xl { font-size: var(--fluid-font-size-2xl); }
+
+.p-fluid { padding: var(--fluid-spacing); }
+.m-fluid { margin: var(--fluid-spacing); }
+.gap-fluid { gap: var(--fluid-spacing); }
+
+/* Mobile-specific adjustments */
+@media (max-width: 640px) {
+  .auth-card {
+    @apply p-6 rounded-[2rem];
+    width: 90%;
+    max-width: none;
+  }
+  
+  .text-4xl { font-size: var(--fluid-font-size-xl); }
+}
+
+/* Glassmorphism */
 .glass {
-  background: var(--color-surface);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.light .glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 184, 0, 0.2);
+}
+
+.auth-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.light .auth-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.8) 100%);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 184, 0, 0.2);
+  box-shadow: 0 25px 50px -12px rgba(255, 184, 0, 0.1);
 }
 
 /* Typing animation */
@@ -71,6 +136,24 @@
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes reverse-spin {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+.animate-reverse-spin {
+  animation: reverse-spin 15s linear infinite;
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */

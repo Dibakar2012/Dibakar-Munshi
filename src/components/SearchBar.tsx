@@ -139,7 +139,7 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
   };
 
   return (
-    <div className="p-4 md:p-6 relative">
+    <div className="p-fluid relative">
       <motion.form
         onSubmit={handleSubmit}
         initial={false}
@@ -190,7 +190,7 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
           placeholder="Ask Dibakar AI"
           disabled={disabled}
           autoFocus
-          className="flex-1 bg-transparent border-none outline-none py-3 px-2 md:px-0 resize-none text-base md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
+          className="flex-1 bg-transparent border-none outline-none py-3 px-2 md:px-0 resize-none text-fluid-base md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
         />
 
         <div className="flex items-center gap-1.5 md:gap-2 pr-1 pb-1 relative z-10">

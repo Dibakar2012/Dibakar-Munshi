@@ -102,7 +102,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className="relative w-[85%] max-w-[320px] h-full bg-surface border-r border-border flex flex-col shadow-2xl"
       >
-        <div className="p-4 flex items-center justify-between border-b border-border">
+        <div className="p-fluid flex items-center justify-between border-b border-border">
           <span className="font-bold text-xl text-primary">Chat History</span>
           <button onClick={onClose} className="p-2 hover:bg-surface-hover rounded-full transition-colors">
             <X size={20} />
@@ -111,7 +111,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
 
         <button
           onClick={onNewChat}
-          className="m-4 flex items-center gap-2 bg-primary hover:bg-blue-600 text-white rounded-xl p-4 font-bold transition-all shadow-lg shadow-primary/20"
+          className="m-fluid flex items-center gap-2 bg-primary hover:bg-blue-600 text-white rounded-xl p-4 font-bold transition-all shadow-lg shadow-primary/20"
         >
           <Plus size={20} />
           <span>New Chat</span>
@@ -228,7 +228,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
           ))}
         </div>
 
-        <div className="p-4 border-t border-border bg-surface/50 space-y-2">
+        <div className="p-fluid border-t border-border bg-surface/50 space-y-2">
           <button
             onClick={() => window.location.href = 'tel:9242959903'}
             className="w-full flex items-center justify-center gap-2 bg-surface-hover hover:bg-border text-text-muted rounded-xl p-3 font-bold transition-all text-sm"

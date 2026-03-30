@@ -323,7 +323,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 md:space-y-10 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-fluid space-y-fluid custom-scrollbar">
           {/* Stats Grid */}
           {statsLoading && !stats ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -364,7 +364,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col lg:flex-row items-start lg:items-center gap-4 md:gap-8">
                   <div className="flex-1 space-y-1 md:space-y-2">
-                    <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+                    <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2">
                       <Activity size={18} className="text-primary" /> Today's Usage
                     </h3>
                     <p className="text-[8px] md:text-xs text-white/40 uppercase tracking-widest">Llama & Serper</p>
@@ -383,7 +383,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
                 <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col lg:flex-row items-start lg:items-center gap-4 md:gap-8">
                   <div className="flex-1 space-y-1 md:space-y-2">
-                    <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+                    <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2">
                       <Activity size={18} className="text-green-400" /> Global Usage
                     </h3>
                     <p className="text-[8px] md:text-xs text-white/40 uppercase tracking-widest">Lifetime consumption</p>
@@ -406,7 +406,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                 <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 relative overflow-hidden group">
                   <div className="flex items-center justify-between mb-6 md:mb-8">
                     <div>
-                      <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+                      <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2">
                         <BarChart3 size={18} className="text-primary" /> User Acquisition
                       </h3>
                       <p className="text-[10px] md:text-xs text-white/40">Last 7 days</p>
@@ -459,7 +459,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                 </div>
 
                 <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col">
-                  <h3 className="text-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
+                  <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
                     <ShoppingBag size={18} className="text-primary" /> Revenue Mix
                   </h3>
                   <div className="space-y-6 md:space-y-8 flex-1 flex flex-col justify-center">
@@ -484,7 +484,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 relative overflow-hidden group">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 md:mb-8">
                   <div>
-                    <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+                    <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2">
                       <Activity size={18} className="text-primary" /> API Usage Trends
                     </h3>
                     <p className="text-[10px] md:text-xs text-white/40">7-day consumption</p>
@@ -565,7 +565,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               {/* Feedback Row */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
                 <div className="bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col">
-                  <h3 className="text-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
+                  <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2 mb-6 md:mb-8">
                     <Star size={18} className="text-yellow-400" /> User Satisfaction
                   </h3>
                   <div className="flex flex-col items-center justify-center mb-6 md:mb-8">
@@ -607,7 +607,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
                 <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-2xl md:rounded-[2.5rem] p-5 md:p-8 flex flex-col">
                   <div className="flex items-center justify-between mb-6 md:mb-8">
-                    <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
+                    <h3 className="text-fluid-base md:text-lg font-bold flex items-center gap-2">
                       <MessageSquarePlus size={18} className="text-primary" /> Recent Feedback
                     </h3>
                     <button 
@@ -662,7 +662,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
           <div className="space-y-6 md:space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
               <div>
-                <h3 className="text-xl md:text-2xl font-black tracking-tighter uppercase">User Management</h3>
+                <h3 className="text-fluid-xl md:text-2xl font-black tracking-tighter uppercase">User Management</h3>
                 <p className="text-[10px] md:text-xs text-white/40">Search and modify user credits</p>
               </div>
               <form onSubmit={handleSearch} className="relative w-full max-w-xl">
@@ -672,7 +672,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Email or phone..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl py-3 md:py-4 pl-12 pr-24 md:pr-32 focus:ring-2 ring-primary/50 outline-none text-xs md:text-sm transition-all focus:bg-white/10"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl py-3 md:py-4 pl-12 pr-24 md:pr-32 focus:ring-2 ring-primary/50 outline-none text-fluid-sm md:text-sm transition-all focus:bg-white/10"
                 />
                 <button
                   type="submit"
@@ -692,7 +692,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-white/5 border border-white/10 p-5 md:p-6 rounded-2xl md:rounded-[2rem] space-y-4 md:space-y-6 hover:border-primary/40 transition-all group relative overflow-hidden"
+                    className="bg-white/5 border border-white/10 p-fluid rounded-2xl md:rounded-[2rem] space-y-4 md:space-y-6 hover:border-primary/40 transition-all group relative overflow-hidden"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 relative z-10">
                       <div className="flex items-center gap-3 md:gap-4">
@@ -700,7 +700,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                           <User className="text-white/20 group-hover:text-primary/40 transition-all w-6 h-6 md:w-8 md:h-8" />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-bold text-sm md:text-lg truncate max-w-[150px] md:max-w-[200px]">{user.email || user.phoneNumber}</h4>
+                          <h4 className="font-bold text-fluid-base md:text-lg truncate max-w-[150px] md:max-w-[200px]">{user.email || user.phoneNumber}</h4>
                           <p className="text-[8px] md:text-[10px] text-white/20 font-mono tracking-tighter truncate">ID: {user.uid}</p>
                           <div className="flex items-center gap-2 mt-2">
                             <span className={cn(
@@ -718,7 +718,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                         </div>
                       </div>
                       <div className="text-left sm:text-right">
-                        <div className="text-2xl md:text-3xl font-black text-primary tracking-tighter flex items-center sm:justify-end gap-2">
+                        <div className="text-fluid-xl md:text-3xl font-black text-primary tracking-tighter flex items-center sm:justify-end gap-2">
                           <CreditCard className="opacity-40 w-5 h-5 md:w-6 md:h-6" /> {user.credits}
                         </div>
                         <p className="text-[8px] md:text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1">Credits</p>
@@ -754,12 +754,12 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                             value={customAmount}
                             onChange={(e) => setCustomAmount(e.target.value)}
                             placeholder="Amount..."
-                            className="flex-1 bg-black/40 border border-white/10 rounded-lg md:rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-[10px] md:text-xs outline-none focus:ring-2 ring-primary/50 transition-all"
+                            className="flex-1 bg-black/40 border border-white/10 rounded-lg md:rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-fluid-sm md:text-xs outline-none focus:ring-2 ring-primary/50 transition-all"
                           />
                           <button
                             onClick={() => injectCredits(user.uid, Number(customAmount))}
                             disabled={!customAmount || Number(customAmount) <= 0 || injectingId === user.uid}
-                            className="bg-white text-black hover:bg-primary hover:text-white disabled:opacity-20 px-4 md:px-6 py-2.5 md:py-3 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-all"
+                            className="bg-white text-black hover:bg-primary hover:text-white disabled:opacity-20 px-4 md:px-6 py-2.5 md:py-3 rounded-lg md:rounded-xl text-fluid-sm md:text-xs font-black uppercase tracking-widest transition-all"
                           >
                             {injectingId === user.uid ? <RefreshCw size={12} className="animate-spin" /> : 'Add'}
                           </button>
@@ -783,7 +783,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                     <AlertCircle className="text-white/20 w-6 h-6 md:w-8 md:h-8" />
                   </div>
                   <div>
-                    <h4 className="text-base md:text-lg font-bold">No results</h4>
+                    <h4 className="text-fluid-lg md:text-lg font-bold">No results</h4>
                     <p className="text-[10px] md:text-sm text-white/40">No users found for "{searchTerm}"</p>
                   </div>
                 </motion.div>

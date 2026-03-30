@@ -19,10 +19,6 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
 
   return (
     <div className="w-full mb-2">
-      <div className="flex items-center gap-2 mb-2">
-        <Globe size={14} className="text-primary" />
-        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Sources</span>
-      </div>
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
         {sources.slice(0, 3).map((source, i) => (
           <a
@@ -267,15 +263,15 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
 
   if (!chatId) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-fluid">
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent"
+          className="text-fluid-2xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent"
         >
           Dibakar AI
         </motion.h1>
-        <p className="text-text-muted max-w-sm text-sm">
+        <p className="text-text-muted max-w-sm text-fluid-base">
           The next generation AI search engine. Ask anything and get structured, accurate answers with real-time web sources.
         </p>
       </div>
@@ -286,7 +282,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
     <div 
       ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-8 relative"
+      className="flex-1 overflow-y-auto p-fluid space-y-fluid relative"
     >
       {/* Top Progress Bar for searching state removed as requested */}
 

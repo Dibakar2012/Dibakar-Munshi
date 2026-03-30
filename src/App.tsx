@@ -11,7 +11,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Paywall from './components/Paywall';
 import PermissionPopup from './components/PermissionPopup';
 import FeedbackModal from './components/FeedbackModal';
-import { LogIn, LogOut, CreditCard, User, ShieldCheck, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus } from 'lucide-react';
+import { LogIn, LogOut, CreditCard, User, ShieldCheck, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { Toaster } from 'sonner';
@@ -24,14 +24,6 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [showPhoneLogin, setShowPhoneLogin] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [showEmailLogin, setShowEmailLogin] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -180,25 +172,9 @@ export default function App() {
 
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
-    } catch (err: any) {
-      console.error('Email Auth Error:', err);
-      setError(err.message);
-      setLoading(false);
-    }
-  };
-
   const handleLogin = async () => {
     console.log('Attempting login with Google...');
+    setLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('Login successful:', result.user.email);
@@ -209,32 +185,8 @@ export default function App() {
       } else {
         setError(`Login failed: ${error.message}`);
       }
-    }
-  };
-
-  const handlePhoneLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible'
-      });
-      const result = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
-      setConfirmationResult(result);
-    } catch (err: any) {
-      console.error('Phone Login Error:', err);
-      setError(`Phone Login Error: ${err.message}`);
-    }
-  };
-
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      await confirmationResult.confirm(verificationCode);
-    } catch (err: any) {
-      console.error('Verify Code Error:', err);
-      setError(`Verify Code Error: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -373,194 +325,77 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-6 text-center">
+      <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-4 text-center overflow-hidden relative">
+        {/* Animated Background Blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/20 rounded-full blur-[120px] animate-pulse delay-700" />
+        
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="max-w-md w-full glass p-10 rounded-3xl space-y-8 relative z-10"
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="max-w-sm w-full auth-card p-fluid rounded-[3rem] space-y-fluid relative z-10 border border-white/10 shadow-2xl"
         >
-          <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto">
-            <ShieldCheck className="text-primary" size={40} />
-          </div>
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight text-white">Dibakar AI</h1>
-            <p className="text-text-muted">Welcome to the future of AI Search. Sign up or login to continue.</p>
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-xl text-red-500 text-xs mt-4 flex flex-col gap-2">
-                <span>{error}</span>
-                <button 
-                  onClick={() => { setError(null); setLoading(true); window.location.reload(); }}
-                  className="underline font-bold text-left"
-                >
-                  Click here to Retry
-                </button>
-              </div>
-            )}
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/20">
+              <ShieldCheck className="text-primary" size={32} />
+            </div>
+            <h1 className="text-fluid-2xl font-black tracking-tighter text-white">SIGN UP</h1>
+            <p className="text-text-muted text-fluid-sm font-medium px-4">Join Dibakar AI to experience the future of search</p>
           </div>
-          <div className="space-y-4">
-            {showEmailLogin ? (
-              <div className="space-y-4">
-                <h3 className="text-xl font-bold text-white">{isSignUp ? 'Create Account' : 'Login'}</h3>
-                <form onSubmit={handleEmailAuth} className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs text-text-muted uppercase tracking-widest block text-left px-1">Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="name@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-background border border-border rounded-2xl py-4 px-5 focus:ring-2 ring-primary/50 outline-none transition-all"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-text-muted uppercase tracking-widest block text-left px-1">Password</label>
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-background border border-border rounded-2xl py-4 px-5 focus:ring-2 ring-primary/50 outline-none transition-all"
-                      required
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full bg-primary text-white py-4 rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/20"
-                  >
-                    {isSignUp ? 'Sign Up' : 'Login'}
-                  </button>
-                </form>
-                
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => setIsSignUp(!isSignUp)}
-                    className="text-sm text-primary hover:underline font-medium"
-                  >
-                    {isSignUp ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
-                  </button>
-                  
-                  <div className="flex items-center gap-4 my-2">
-                    <div className="h-px bg-border flex-1" />
-                    <span className="text-[10px] text-text-muted uppercase tracking-widest">OR</span>
-                    <div className="h-px bg-border flex-1" />
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={handleLogin}
-                      className="bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs"
-                    >
-                      <LogIn size={16} /> Google
-                    </button>
-                    <button
-                      onClick={() => { setShowEmailLogin(false); setShowPhoneLogin(true); }}
-                      className="bg-surface-hover border border-border hover:border-primary py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs"
-                    >
-                      <Phone size={16} /> Phone
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : !showPhoneLogin ? (
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={() => setShowEmailLogin(true)}
-                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
-                >
-                  <LogIn size={20} /> Continue with Email
-                </button>
-                <button
-                  onClick={handleLogin}
-                  className="w-full bg-white text-black hover:bg-gray-200 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
-                >
-                  <LogIn size={20} /> Continue with Google
-                </button>
-                <div className="flex items-center gap-4 my-2">
-                  <div className="h-px bg-border flex-1" />
-                  <span className="text-[10px] text-text-muted uppercase tracking-widest">OR</span>
-                  <div className="h-px bg-border flex-1" />
-                </div>
-                <button
-                  onClick={() => setShowPhoneLogin(true)}
-                  className="w-full bg-surface-hover border border-border hover:border-primary py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
-                >
-                  Sign in with Phone
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <h3 className="text-lg font-bold">Phone Login</h3>
-                {!confirmationResult ? (
-                  <form onSubmit={handlePhoneLogin} className="space-y-4">
-                    <input
-                      type="tel"
-                      placeholder="+91 1234567890"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl py-3 px-4 focus:ring-2 ring-primary/50 outline-none"
-                      required
-                    />
-                    <button
-                      type="submit"
-                      className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-blue-600 transition-all"
-                    >
-                      Send OTP
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setShowPhoneLogin(false); setShowEmailLogin(true); }}
-                      className="w-full text-xs text-text-muted hover:text-white"
-                    >
-                      Back to Login
-                    </button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleVerifyCode} className="space-y-4">
-                    <input
-                      type="text"
-                      placeholder="Enter 6-digit code"
-                      value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value)}
-                      className="w-full bg-background border border-border rounded-xl py-3 px-4 focus:ring-2 ring-primary/50 outline-none"
-                      required
-                    />
-                    <button
-                      type="submit"
-                      className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-blue-600 transition-all"
-                    >
-                      Verify OTP
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmationResult(null)}
-                      className="w-full text-xs text-text-muted hover:text-white"
-                    >
-                      Resend OTP
-                    </button>
-                  </form>
-                )}
-              </div>
-            )}
-          </div>
-          
-          <div id="recaptcha-container"></div>
-          
-          <div className="pt-4">
-            <a 
-              href={window.location.href} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-xs text-primary hover:underline"
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl text-red-500 text-xs text-left flex flex-col gap-2"
             >
-              Having trouble? Open in a new tab
-            </a>
+              <div className="flex items-center gap-2 font-bold">
+                <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                Authentication Error
+              </div>
+              <p className="opacity-80">{error}</p>
+              <button 
+                onClick={() => { setError(null); window.location.reload(); }}
+                className="text-red-500 font-black uppercase tracking-widest mt-1 hover:underline"
+              >
+                Try Again
+              </button>
+            </motion.div>
+          )}
+
+          <div className="space-y-4">
+            <button
+              onClick={handleLogin}
+              disabled={loading}
+              className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg hover:bg-white/90 transition-all shadow-xl flex items-center justify-center gap-3 group active:scale-95"
+            >
+              {loading ? (
+                <div className="w-6 h-6 border-2 border-black border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <LogIn size={20} />
+                  CONTINUE WITH GOOGLE
+                </>
+              )}
+            </button>
+
+            <p className="text-[10px] text-text-muted font-bold uppercase tracking-[0.2em] pt-2">
+              Secure • Fast • Private
+            </p>
           </div>
-          <p className="text-[10px] text-text-muted uppercase tracking-widest">
-            Secure Authentication by Firebase
-          </p>
+          
+          <div className="pt-6 border-t border-white/5">
+            <p className="text-[10px] text-text-muted font-medium uppercase tracking-widest leading-relaxed opacity-60">
+              By continuing, you agree to our <br />
+              <span className="text-primary cursor-pointer hover:underline">Terms</span> & <span className="text-primary cursor-pointer hover:underline">Privacy</span>
+            </p>
+          </div>
         </motion.div>
+
+        {/* Decorative Elements */}
+        <div className="absolute top-10 right-10 w-32 h-32 border border-white/5 rounded-full animate-spin-slow pointer-events-none" />
+        <div className="absolute bottom-10 left-10 w-24 h-24 border border-white/5 rounded-full animate-reverse-spin pointer-events-none" />
       </div>
     );
   }
@@ -605,7 +440,7 @@ export default function App() {
           <div className="flex items-center gap-2 md:gap-4">
             <div className="hidden sm:flex items-center gap-2 text-sm text-text-muted">
               <User size={16} />
-              <span className="hidden md:inline">{user?.email || user?.phoneNumber || 'User'}</span>
+              <span className="hidden md:inline">{user?.name || user?.email || user?.phoneNumber || 'User'}</span>
             </div>
             
             <div className="relative">
@@ -631,7 +466,7 @@ export default function App() {
                     >
                       <div className="p-4 border-b border-border">
                         <p className="text-[10px] text-text-muted uppercase tracking-widest mb-1">Profile</p>
-                        <p className="text-sm font-bold truncate">{user?.email || user?.phoneNumber || 'User'}</p>
+                        <p className="text-sm font-bold truncate">{user?.name || user?.email || user?.phoneNumber || 'User'}</p>
                         <p className="text-[10px] text-primary font-bold mt-1 uppercase tracking-tighter">
                           {user?.role === 'admin' ? 'Administrator' : 'Free User'}
                         </p>
