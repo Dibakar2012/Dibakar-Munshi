@@ -184,23 +184,8 @@ const startServer = async () => {
         `,
       };
 
-      // 3. Send WhatsApp to Admin via CallMeBot (Background)
-      const CALLMEBOT_API_KEY = process.env.CALLMEBOT_API_KEY;
-      const adminPhone = "919242959903";
-      
-      if (CALLMEBOT_API_KEY) {
-        try {
-          const whatsappMsg = `*New Premium Request* 🚀\n\n*Name:* ${name}\n*Email:* ${email}\n*Phone:* ${phone}\n*Plan:* ${plan}`;
-          const callMeBotUrl = `https://api.callmebot.com/whatsapp.php?phone=${adminPhone}&text=${encodeURIComponent(whatsappMsg)}&apikey=${CALLMEBOT_API_KEY}`;
-          
-          await axios.get(callMeBotUrl);
-          console.log("WhatsApp notification sent via CallMeBot");
-        } catch (waErr: any) {
-          console.error("CallMeBot WhatsApp Error:", waErr.message);
-        }
-      } else {
-        console.warn("CALLMEBOT_API_KEY not set. WhatsApp notification skipped.");
-      }
+      // 3. Log the request
+      console.log(`[Premium Request] Success: ${name} (${email}) for plan ${plan}`);
 
       // 4. Save to Firestore for Admin Dashboard
       if (db) {
@@ -542,19 +527,25 @@ ${context}`
       console.log(`Server running on http://0.0.0.0:${portNumber}`);
       
       // Keep-alive mechanism for Render free plan
-      const APP_URL = process.env.APP_URL;
-      if (APP_URL) {
-        console.log(`[Keep-Alive] Initialized for: ${APP_URL}`);
-        setInterval(async () => {
+      // This pings the server every 5 minutes to prevent it from sleeping
+      const APP_URL = process.env.APP_URL || `http://localhost:${portNumber}`;
+      console.log(`[Keep-Alive] Initialized for: ${APP_URL}`);
+      
+      setInterval(async () => {
+        try {
+          const pingUrl = `${APP_URL.endsWith('/') ? APP_URL.slice(0, -1) : APP_URL}/api/ping`;
+          await axios.get(pingUrl);
+          console.log(`[Keep-Alive] Ping successful at ${new Date().toLocaleTimeString()}`);
+        } catch (error: any) {
+          // If it fails, try localhost as fallback
           try {
-            const pingUrl = `${APP_URL.endsWith('/') ? APP_URL.slice(0, -1) : APP_URL}/api/ping`;
-            await axios.get(pingUrl);
-            console.log(`[Keep-Alive] Pinged ${pingUrl} at ${new Date().toISOString()}`);
-          } catch (error: any) {
-            console.error(`[Keep-Alive] Failed to ping:`, error.message);
+            await axios.get(`http://localhost:${portNumber}/api/ping`);
+            console.log(`[Keep-Alive] Localhost fallback ping successful`);
+          } catch (localErr: any) {
+            console.error(`[Keep-Alive] All pings failed:`, localErr.message);
           }
-        }, 5 * 60 * 1000); // 5 minutes
-      }
+        }
+      }, 5 * 60 * 1000); // 5 minutes
     });
   } catch (error) {
     console.error("Failed to start server:", error);
