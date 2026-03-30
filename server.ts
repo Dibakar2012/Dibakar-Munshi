@@ -357,6 +357,14 @@ const startServer = async () => {
       }
 
       const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
+      
+      // Post-process to remove Sources/References section if AI ignored instructions
+      // This regex looks for common headers at the end of the response
+      const cleanAnswer = answer
+        .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations):[\s\S]*$/i, '')
+        .replace(/\[\d+\]/g, '') // Remove [1], [2] etc
+        .trim();
+
       const llamaTokens = chatCompletion.usage?.total_tokens || 0;
       console.log("Groq response received successfully");
 
@@ -399,8 +407,8 @@ const startServer = async () => {
       }
 
       res.json({
-        answer,
-        sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })),
+        answer: cleanAnswer,
+        sources: sources.map((s: any) => ({ title: s.title, link: s.link, snippet: s.snippet })),
         usage: {
           llamaTokens,
           serperRequests: context ? 1 : 0

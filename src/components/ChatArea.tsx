@@ -9,6 +9,15 @@ import { cn } from '../lib/utils';
 
 const INITIAL_LIMIT = 20;
 
+function cleanMessageContent(content: string) {
+  // Remove common source/reference headers and everything after them
+  // Also remove bracketed citations like [1], [2]
+  return content
+    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations):[\s\S]*$/i, '')
+    .replace(/\[\d+\]/g, '')
+    .trim();
+}
+
 interface ChatAreaProps {
   chatId: string | null;
   isSearching: boolean;
@@ -331,7 +340,9 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
                     "prose prose-sm md:prose-base max-w-none leading-relaxed",
                     msg.role === 'assistant' ? "prose-headings:text-text prose-p:text-text/90" : "text-white font-medium"
                   )}>
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown>
+                      {msg.role === 'assistant' ? cleanMessageContent(msg.content) : msg.content}
+                    </ReactMarkdown>
                   </div>
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-2 mt-4 md:mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
