@@ -1,8 +1,18 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+// In Vite, environment variables must be prefixed with VITE_ to be accessible in the browser
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+
+if (!apiKey) {
+  console.warn("VITE_GEMINI_API_KEY is not set. Gemini features will not work in the browser.");
+}
+
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export async function generateSearchResponse(query: string, history: any[]) {
+  if (!ai) {
+    throw new Error("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment variables.");
+  }
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -29,6 +39,9 @@ export async function generateSearchResponse(query: string, history: any[]) {
 }
 
 export async function* generateSearchResponseStream(query: string, history: any[]) {
+  if (!ai) {
+    throw new Error("Gemini API Key is missing. Please set VITE_GEMINI_API_KEY in your environment variables.");
+  }
   try {
     const responseStream = await ai.models.generateContentStream({
       model: "gemini-3-flash-preview",
@@ -68,6 +81,9 @@ export async function* generateSearchResponseStream(query: string, history: any[
 }
 
 export async function generateChatTitle(firstMessage: string) {
+  if (!ai) {
+    return firstMessage.slice(0, 30);
+  }
   try {
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
