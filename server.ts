@@ -319,7 +319,7 @@ const startServer = async () => {
 
       // 3. Call Groq (Llama-3)
       console.log("Calling Groq...");
-      const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. Put the source links at the end if context was used.
+      const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. Do NOT include source links or URLs in your response text, as they will be handled separately by the UI.
       
       Context:
       ${context || "No web context needed for this query."}`;
