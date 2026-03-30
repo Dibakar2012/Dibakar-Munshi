@@ -180,7 +180,11 @@ export default function App() {
       console.log('Login successful:', result.user.email);
     } catch (error: any) {
       console.error('Login Error:', error.code, error.message);
-      alert(`Login failed: ${error.message}`);
+      if (error.code === 'auth/unauthorized-domain') {
+        setError(`Login failed: This domain is not authorized in Firebase. Please add your App URL to 'Authorized Domains' in the Firebase Console (Authentication > Settings).`);
+      } else {
+        setError(`Login failed: ${error.message}`);
+      }
     }
   };
 
