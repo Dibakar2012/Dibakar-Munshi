@@ -70,16 +70,14 @@ const startServer = async () => {
             console.log("[Firebase] Firestore initialized with default database");
           }
           
-          // Test connection/permissions immediately
+          // Test connection/permissions gracefully without blocking or crashing
+          // We use a simple get instead of set to avoid write permission issues during boot
           const testRef = db.collection('test_connection').doc('server_boot');
-          await testRef.set({
-            timestamp: FieldValue.serverTimestamp(),
-            message: "Server started",
-            env: process.env.NODE_ENV,
-            projectId,
-            dbId: dbId || '(default)'
-          }, { merge: true });
-          console.log("[Firebase] Connection test successful");
+          testRef.get().then(() => {
+            console.log("[Firebase] Connection test successful (read)");
+          }).catch((err: any) => {
+            console.warn("[Firebase] Optional connection test failed (read):", err.message);
+          });
         } catch (dbInitErr: any) {
           console.error("[Firebase] Failed to initialize Firestore or connection test failed:", dbInitErr.message);
           if (dbInitErr.message.includes('PERMISSION_DENIED') || dbInitErr.message.includes('NOT_FOUND')) {

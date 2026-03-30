@@ -84,8 +84,11 @@ export default function App() {
         await getDocFromServer(doc(db, 'test', 'connection'));
         console.log('Firestore connection test successful');
       } catch (err: any) {
+        console.warn('Firestore connection test failed:', err.message);
         if (err.message?.includes('the client is offline')) {
           setError('Firestore is offline. Please check your Firebase configuration or internet connection.');
+        } else if (err.message?.includes('PERMISSION_DENIED')) {
+          console.warn('Permission denied for connection test. This is often normal if rules are strictly locked down.');
         }
       }
     }

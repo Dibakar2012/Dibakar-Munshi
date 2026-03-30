@@ -19,6 +19,10 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
 
   return (
     <div className="w-full mb-2">
+      <div className="flex items-center gap-2 mb-2">
+        <Globe size={14} className="text-primary" />
+        <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Sources</span>
+      </div>
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
         {sources.slice(0, 3).map((source, i) => (
           <a
