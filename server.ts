@@ -385,7 +385,7 @@ const startServer = async () => {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    console.log("Initializing Vite middleware...");
+    console.log("Initializing Vite middleware (DEVELOPMENT mode)...");
     try {
       const vite = await createViteServer({
         server: { middlewareMode: true },
@@ -398,10 +398,33 @@ const startServer = async () => {
       console.error("Failed to initialize Vite middleware:", viteErr);
     }
   } else {
+    console.log("Running in PRODUCTION mode");
     const distPath = path.join(process.cwd(), "dist");
+    console.log("Serving static files from:", distPath);
+    
+    // Serve static files
     app.use(express.static(distPath));
+    
+    // Handle SPA routing
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.error("Error sending index.html:", err);
+          res.status(500).send(`
+            <html>
+              <body style="background: #0a0a0a; color: white; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center;">
+                <div>
+                  <h1 style="color: #3b82f6;">Build Files Not Found</h1>
+                  <p>The server is running in production mode but the 'dist' folder is missing or index.html is not found.</p>
+                  <p style="color: #9ca3af; font-size: 0.8rem;">Path: ${indexPath}</p>
+                  <code style="background: #1a1a1a; padding: 10px; border-radius: 8px; display: block; margin-top: 20px;">npm run build</code>
+                </div>
+              </body>
+            </html>
+          `);
+        }
+      });
     });
   }
 

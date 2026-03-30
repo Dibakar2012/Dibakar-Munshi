@@ -336,8 +336,9 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-[100dvh] bg-background flex items-center justify-center">
+      <div className="h-[100dvh] bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-primary font-medium animate-pulse">Loading Dibakar AI...</p>
       </div>
     );
   }
@@ -346,15 +347,16 @@ export default function App() {
     return (
       <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-6 text-center">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full glass p-10 rounded-3xl space-y-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="max-w-md w-full glass p-10 rounded-3xl space-y-8 relative z-10"
         >
           <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto">
             <ShieldCheck className="text-primary" size={40} />
           </div>
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight">Dibakar AI</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-white">Dibakar AI</h1>
             <p className="text-text-muted">Welcome to the future of AI Search. Sign up or login to continue.</p>
             {error && (
               <div className="bg-red-500/10 border border-red-500/50 p-3 rounded-xl text-red-500 text-xs mt-4 flex flex-col gap-2">
