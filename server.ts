@@ -132,6 +132,11 @@ const startServer = async () => {
     }
   });
 
+  // Keep-alive endpoint for Render
+  app.get("/api/ping", (req, res) => {
+    res.json({ status: "alive", timestamp: new Date().toISOString() });
+  });
+
   // API routes
   app.post("/api/premium-request", async (req, res) => {
     const { email, name, phone, plan } = req.body;
@@ -535,6 +540,21 @@ ${context}`
     const portNumber = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
     app.listen(portNumber, "0.0.0.0", () => {
       console.log(`Server running on http://0.0.0.0:${portNumber}`);
+      
+      // Keep-alive mechanism for Render free plan
+      const APP_URL = process.env.APP_URL;
+      if (APP_URL) {
+        console.log(`[Keep-Alive] Initialized for: ${APP_URL}`);
+        setInterval(async () => {
+          try {
+            const pingUrl = `${APP_URL.endsWith('/') ? APP_URL.slice(0, -1) : APP_URL}/api/ping`;
+            await axios.get(pingUrl);
+            console.log(`[Keep-Alive] Pinged ${pingUrl} at ${new Date().toISOString()}`);
+          } catch (error: any) {
+            console.error(`[Keep-Alive] Failed to ping:`, error.message);
+          }
+        }, 5 * 60 * 1000); // 5 minutes
+      }
     });
   } catch (error) {
     console.error("Failed to start server:", error);
