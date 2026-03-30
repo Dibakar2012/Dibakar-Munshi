@@ -1,8 +1,10 @@
 {
-  "name": "Dibakar AI",
+  "name": "Dibakar AI Pro",
   "short_name": "Dibakar AI",
+  "description": "Android-optimized AI Search Engine",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#0f1115",
   "theme_color": "#3b82f6",
   "icons": [

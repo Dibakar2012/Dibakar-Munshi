@@ -419,19 +419,18 @@ export default function App() {
       </AnimatePresence>
 
       <main className="flex-1 flex flex-col relative overflow-hidden">
-        <header className={`h-14 md:h-16 border-b border-border flex items-center justify-between px-3 md:px-6 bg-background/50 backdrop-blur-md sticky top-0 transition-all ${isMoreMenuOpen ? 'z-[100]' : 'z-10'}`}>
+        <header className={`h-14 border-b border-border flex items-center justify-between px-3 md:px-6 bg-background/80 backdrop-blur-xl sticky top-0 transition-all ${isMoreMenuOpen ? 'z-[100]' : 'z-10'}`}>
           <div className="flex items-center gap-2 md:gap-4">
             <button 
               onClick={() => setIsHistoryOpen(true)}
-              className="p-2 hover:bg-surface-hover rounded-xl text-text-muted md:hidden"
+              className="p-2 hover:bg-surface-hover rounded-xl text-text-muted md:hidden active:scale-90 transition-transform"
             >
               <History size={20} />
             </button>
-            <h1 className="text-lg md:text-xl font-bold text-primary hidden sm:block">Dibakar AI</h1>
-            <div className="flex items-center gap-1.5 md:gap-2 bg-surface px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-border">
-              <CreditCard size={12} className="text-primary md:hidden" />
-              <CreditCard size={14} className="text-primary hidden md:block" />
-              <span className="text-[10px] md:text-sm font-bold">
+            <h1 className="text-lg md:text-xl font-black text-primary tracking-tighter">Dibakar AI</h1>
+            <div className="flex items-center gap-1.5 md:gap-2 bg-surface px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-border shadow-sm">
+              <Zap size={12} className="text-primary" />
+              <span className="text-[10px] md:text-sm font-black uppercase tracking-tighter">
                 {user?.role === 'admin' ? 'Unlimited' : `${user?.credits || 0} Cr`}
               </span>
             </div>

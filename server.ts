@@ -291,27 +291,50 @@ const startServer = async () => {
     const groq = new Groq({ apiKey: GROQ_API_KEY });
 
     try {
-      // 1. Check if it's a simple greeting or conversational query
-      const lowerQuery = query.toLowerCase().trim();
-      const greetings = [
-        "hi", "hello", "hey", "namaste", "salaam", "kaise ho", "how are you", 
-        "who are you", "what is your name", "kya haal hai", "good morning", 
-        "good afternoon", "good evening", "bye", "thanks", "thank you",
-        "hi dibakar", "hello dibakar", "hey dibakar", "dibakar ai", "who made you"
-      ];
-      
-      // Improved autoswitch: Check for greetings or very short conversational queries
-      // Also check if the query is just a single word or very short (less than 15 chars)
-      const isGreeting = lowerQuery.length < 25 && (
-        greetings.some(g => lowerQuery.includes(g)) || 
-        lowerQuery.split(' ').length <= 2
-      );
-      console.log(`Query type: ${isGreeting ? 'Greeting/Conversational' : 'Search'}`);
+      // 1. SmartRouter: Classify the query
+      console.log("Routing query...");
+      const routerCompletion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content: "You are a query classifier. Your ONLY job is to classify the user's message into exactly one category. Reply with ONLY one word - nothing else:\n- Reply 'casual' if the user is sending a greeting, chitchat, hi, hello, namaste, thanks, bye, good morning, or any informal non-question message. ALSO include identity questions like 'who are you', 'tum kon ho', 'aapka naam kya hai', etc.\n- Reply 'search' if the user is asking a real question that needs information, facts, news, how-to, or web search\n\nIMPORTANT: Reply with ONLY the single word 'casual' or 'search'. No explanation, no punctuation, no other text."
+          },
+          { role: "user", content: query }
+        ],
+        model: "llama-3.1-8b-instant",
+        temperature: 0,
+      });
 
-      let context = "";
+      const route = routerCompletion.choices[0]?.message?.content?.toLowerCase().trim() || "search";
+      console.log(`SmartRouter decision: ${route}`);
+
+      let answer = "";
       let sources: any[] = [];
+      let context = "";
+      let llamaTokens = routerCompletion.usage?.total_tokens || 0;
 
-      if (!isGreeting) {
+      if (route.includes("casual")) {
+        // 2. CasualAgent Path
+        console.log("Executing CasualAgent path...");
+        const casualCompletion = await groq.chat.completions.create({
+          messages: [
+            {
+              role: "system",
+              content: "Tu Dibakar AI Brain hai. Ek smart aur friendly assistant.\n\nRULES:\n- Seedha point pe aa. Faltu bakwaas mat kar.\n- Chhota jawab de. 1-2 line kaafi hai greeting ke liye.\n- Natural baat kar jaise ek dost se baat kar raha hai.\n- User jis bhasha mein bole usi mein bol.\n- Apna naam 'Dibakar AI Brain' bata agar pehli baar baat ho.\n- Fokat ka gyaan mat de. Bas pooch kya help chahiye.\n\nEXAMPLES:\n- User: hi → Tu: Hey! Main Dibakar AI Brain hoon. Bata kya jaanna hai?\n- User: hello → Tu: Hello! Kya help chahiye?\n- User: namaste → Tu: Namaste! Batao kya search karna hai?\n- User: kaise ho → Tu: Badhiya hoon! Bol kya karna hai?\n- User: thanks → Tu: Welcome! Aur kuch poochna ho to bol.\n- User: bye → Tu: Bye! Phir aana jab zaroorat ho."
+            },
+            ...history.map((h: any) => ({ role: h.role, content: h.content })),
+            { role: "user", content: query }
+          ],
+          model: "llama-3.1-8b-instant",
+          temperature: 0.3,
+        });
+        answer = casualCompletion.choices[0]?.message?.content || "";
+        llamaTokens += casualCompletion.usage?.total_tokens || 0;
+      } else {
+        // 3. Search Path
+        console.log("Executing Search path...");
+        
+        // 3a. SerperSearch
         try {
           console.log("Calling Serper.dev...");
           const serperRes = await axios.post(
@@ -319,54 +342,83 @@ const startServer = async () => {
             { q: query, num: 3 },
             { 
               headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" },
-              timeout: 8000 // 8 second timeout for search
+              timeout: 8000
             }
           );
 
           sources = serperRes.data.organic || [];
-          context = sources
-            .map((s: any, i: number) => `Source [${i + 1}]: ${s.title}\nURL: ${s.link}\nSnippet: ${s.snippet}`)
-            .join("\n\n");
+          
+          // 3b. CleanData (Logic from JSON)
+          if (sources.length > 0) {
+            context = "=== TOP 3 SEARCH RESULTS ===\n\n";
+            sources.slice(0, 3).forEach((item: any, index: number) => {
+              context += `--- Result #${index + 1} ---\n`;
+              context += `Title: ${item.title || 'No title'}\n`;
+              context += `URL: ${item.link || ''}\n`;
+              context += `Content: ${item.snippet || 'No description available'}\n\n`;
+            });
+          } else {
+            context = "No search results found. Please answer from your own knowledge.";
+          }
           console.log(`Serper found ${sources.length} sources`);
         } catch (serperErr: any) {
           console.error("Serper API Error:", serperErr.response?.data || serperErr.message);
-          // Fallback to direct answer if Serper fails
+          context = "Search failed. Please answer from your own knowledge.";
         }
+
+        // 3c. SearchAgent
+        console.log("Calling SearchAgent...");
+        const searchCompletion = await groq.chat.completions.create({
+          messages: [
+            {
+              role: "system",
+              content: `Tu Dibakar AI Brain hai - Perplexity jaisa powerful search assistant. Tujhe top 3 websites ke results milte hain user ke sawaal ke baare mein. Tera kaam hai:
+
+1. Teeno websites ka data dhyan se padh
+2. Apni knowledge bhi jod
+3. EK simple aur clear jawab bana
+
+LANGUAGE RULES (BAHUT IMPORTANT):
+- HAMESHA bahut asan aur simple language mein jawab de
+- Jaise kisi chhote bachche ko samjha raha ho
+- Koi mushkil ya technical word mat use kar
+- Chhote chhote sentences likh - ek line mein ek baat
+- User jis language mein bole usi mein jawab de (Hindi/Hinglish/English)
+- Agar English mein bhi jawab de raha hai to simple English use kar
+- Bullet points use kar taaki padhne mein aasani ho
+
+FORMAT:
+- Pehle seedha jawab de (2-3 line mein main point)
+- Phir thoda detail mein samjha (bullet points mein)
+- Last mein sources daal with links:
+  📌 Sources:
+  1. [website name](link)
+  2. [website name](link)
+  3. [website name](link)
+
+- Kabhi bhi ads ya promotional content mat daal
+
+Context:
+${context}`
+            },
+            ...history.map((h: any) => ({ role: h.role, content: h.content })),
+            { role: "user", content: `User ka sawaal: ${query}` }
+          ],
+          model: "llama-3.1-8b-instant",
+          temperature: 0.3,
+        });
+
+        answer = searchCompletion.choices[0]?.message?.content || "";
+        llamaTokens += searchCompletion.usage?.total_tokens || 0;
       }
 
-      // 3. Call Groq (Llama-3)
-      console.log("Calling Groq...");
-      const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. 
-      
-      CRITICAL: Do NOT include any "Sources", "References", or "Links" section at the end of your response. Do NOT include URLs or bracketed citations like [1], [2] in your text. The UI will handle displaying the sources separately. Your job is ONLY to provide the synthesized answer text.
-      
-      Context:
-      ${context || "No web context needed for this query."}`;
-
-      const chatCompletion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemInstruction },
-          ...history.map((h: any) => ({ role: h.role, content: h.content })),
-          { role: "user", content: query },
-        ],
-        model: "llama-3.3-70b-versatile",
-      }, { timeout: 25000 }); // Increased timeout to 25 seconds
-
-      if (!chatCompletion || !chatCompletion.choices || chatCompletion.choices.length === 0) {
-        throw new Error("Groq API returned an empty response");
-      }
-
-      const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
-      
-      // Post-process to remove Sources/References section if AI ignored instructions
-      // This regex looks for common headers at the end of the response
+      // Post-process to remove any accidental sources section
       const cleanAnswer = answer
-        .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations):[\s\S]*$/i, '')
-        .replace(/\[\d+\]/g, '') // Remove [1], [2] etc
+        .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|📌 Sources):[\s\S]*$/i, '')
+        .replace(/\[\d+\]/g, '')
         .trim();
 
-      const llamaTokens = chatCompletion.usage?.total_tokens || 0;
-      console.log("Groq response received successfully");
+      console.log("Response generated successfully");
 
       // 4. Record Usage in Firestore
       if (db) {

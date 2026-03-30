@@ -48,6 +48,7 @@
     overflow-x: hidden;
     height: 100%;
     scroll-behavior: smooth;
+    @apply select-none;
   }
   
   body {
@@ -57,9 +58,14 @@
     overscroll-behavior: none;
     height: 100%;
     min-height: calc(var(--vh, 1vh) * 100);
-    @apply select-none overflow-hidden;
+    @apply overflow-hidden;
     position: fixed;
     width: 100%;
+  }
+
+  /* Allow text selection in messages and inputs */
+  .prose, input, textarea {
+    @apply select-text;
   }
 
   #root {

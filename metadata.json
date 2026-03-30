@@ -1,5 +1,5 @@
 {
-  "name": "Dibakar AI",
-  "description": "A production-ready Full-Stack AI Search Engine similar to Perplexity AI.",
+  "name": "Dibakar AI Pro",
+  "description": "Android-optimized AI Search Engine with real-time web sources and structured answers.",
   "requestFramePermissions": ["microphone", "camera", "geolocation"]
 }
