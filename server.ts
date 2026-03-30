@@ -233,6 +233,32 @@ const startServer = async () => {
     });
   });
 
+  // API route for chat title generation
+  app.post("/api/title", async (req, res) => {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: "Message is required" });
+    if (!GROQ_API_KEY) return res.status(500).json({ error: "GROQ_API_KEY is missing" });
+
+    const groq = new Groq({ apiKey: GROQ_API_KEY });
+    try {
+      const completion = await groq.chat.completions.create({
+        messages: [
+          { 
+            role: "system", 
+            content: "Generate a very short, descriptive title (max 5 words) for a chat that starts with the user's message. Return only the title text, no quotes or extra words." 
+          },
+          { role: "user", content: message },
+        ],
+        model: "llama-3.3-70b-versatile",
+      });
+      const title = completion.choices[0]?.message?.content?.trim() || message.slice(0, 30);
+      res.json({ title });
+    } catch (error: any) {
+      console.error("Title API Error:", error.message);
+      res.json({ title: message.slice(0, 30) });
+    }
+  });
+
   // API routes
   app.post("/api/search", async (req, res) => {
     const { query, history = [] } = req.body;
@@ -429,8 +455,9 @@ const startServer = async () => {
   }
 
   try {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://0.0.0.0:${PORT}`);
+    const portNumber = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
+    app.listen(portNumber, "0.0.0.0", () => {
+      console.log(`Server running on http://0.0.0.0:${portNumber}`);
     });
   } catch (error) {
     console.error("Failed to start server:", error);
