@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, PhoneAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, PhoneAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -15,3 +15,5 @@ const dbId = firebaseConfig.firestoreDatabaseId &&
 export const db = getFirestore(app, dbId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+export { createUserWithEmailAndPassword, signInWithEmailAndPassword };

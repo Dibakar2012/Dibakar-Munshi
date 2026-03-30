@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, serverTimestamp, updateDoc, increment, query, orderBy, limit, getDocs, getDocFromServer } from 'firebase/firestore';
-import { auth, db, googleProvider } from './lib/firebase';
+import { auth, db, googleProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from './lib/firebase';
 import { generateSearchResponse, generateChatTitle, generateSearchResponseStream } from './lib/geminiService';
 import { UserProfile, Chat, Message, SearchResponse } from './types';
 import Sidebar from './components/Sidebar';
@@ -28,6 +28,10 @@ export default function App() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [showEmailLogin, setShowEmailLogin] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -175,6 +179,23 @@ export default function App() {
   }, []);
 
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err: any) {
+      console.error('Email Auth Error:', err);
+      setError(err.message);
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     console.log('Attempting login with Google...');
@@ -378,8 +399,78 @@ export default function App() {
             )}
           </div>
           <div className="space-y-4">
-            {!showPhoneLogin ? (
+            {showEmailLogin ? (
+              <div className="space-y-4">
+                <h3 className="text-xl font-bold text-white">{isSignUp ? 'Create Account' : 'Login'}</h3>
+                <form onSubmit={handleEmailAuth} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs text-text-muted uppercase tracking-widest block text-left px-1">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="name@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-background border border-border rounded-2xl py-4 px-5 focus:ring-2 ring-primary/50 outline-none transition-all"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-text-muted uppercase tracking-widest block text-left px-1">Password</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-background border border-border rounded-2xl py-4 px-5 focus:ring-2 ring-primary/50 outline-none transition-all"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full bg-primary text-white py-4 rounded-2xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-primary/20"
+                  >
+                    {isSignUp ? 'Sign Up' : 'Login'}
+                  </button>
+                </form>
+                
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => setIsSignUp(!isSignUp)}
+                    className="text-sm text-primary hover:underline font-medium"
+                  >
+                    {isSignUp ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+                  </button>
+                  
+                  <div className="flex items-center gap-4 my-2">
+                    <div className="h-px bg-border flex-1" />
+                    <span className="text-[10px] text-text-muted uppercase tracking-widest">OR</span>
+                    <div className="h-px bg-border flex-1" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={handleLogin}
+                      className="bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs"
+                    >
+                      <LogIn size={16} /> Google
+                    </button>
+                    <button
+                      onClick={() => { setShowEmailLogin(false); setShowPhoneLogin(true); }}
+                      className="bg-surface-hover border border-border hover:border-primary py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs"
+                    >
+                      <Phone size={16} /> Phone
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : !showPhoneLogin ? (
               <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setShowEmailLogin(true)}
+                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
+                >
+                  <LogIn size={20} /> Continue with Email
+                </button>
                 <button
                   onClick={handleLogin}
                   className="w-full bg-white text-black hover:bg-gray-200 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
@@ -419,10 +510,10 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowPhoneLogin(false)}
+                      onClick={() => { setShowPhoneLogin(false); setShowEmailLogin(true); }}
                       className="w-full text-xs text-text-muted hover:text-white"
                     >
-                      Back to Google Login
+                      Back to Login
                     </button>
                   </form>
                 ) : (
