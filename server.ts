@@ -2,9 +2,10 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
-import { Groq } from "groq-sdk";
+import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import cors from "cors";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
@@ -20,9 +21,10 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+export const app = express();
+
 const startServer = async () => {
   console.log("Starting Dibakar AI Server...");
-  const app = express();
   const PORT = 3000;
 
   // Initialize Groq inside startServer to use latest env vars
@@ -35,9 +37,7 @@ const startServer = async () => {
   console.log("- GOOGLE_CLOUD_PROJECT:", process.env.GOOGLE_CLOUD_PROJECT);
   console.log("- FIREBASE_PROJECT_ID:", process.env.FIREBASE_PROJECT_ID);
   console.log("- PORT:", process.env.PORT);
-
-  const groq = new Groq({ apiKey: GROQ_API_KEY || "dummy_key" });
-
+  
   let db: any = null;
 
   try {
@@ -47,39 +47,49 @@ const startServer = async () => {
       try {
         const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
         const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
+        const dbId = firebaseConfig.firestoreDatabaseId;
         
-        if (projectId) {
-          console.log(`[Firebase] Initializing with Project ID: ${projectId}`);
-          console.log(`[Firebase] Target Database ID: ${firebaseConfig.firestoreDatabaseId || '(default)'}`);
-          
-          if (!getApps().length) {
-            initializeApp({
-              projectId: projectId
-            });
+        console.log(`[Firebase] Config Project ID: ${projectId}`);
+        console.log(`[Firebase] Target Database ID: ${dbId || '(default)'}`);
+        console.log(`[Firebase] NODE_ENV: ${process.env.NODE_ENV}`);
+        
+        // Use the default app if possible, otherwise use a named app
+        const adminApp = getApps().length === 0 
+          ? initializeApp({ projectId: projectId }) 
+          : getApps()[0];
+        
+        console.log(`[Firebase] Admin SDK initialized with project: ${projectId}`);
+        
+        try {
+          // Try initializing with the specific database ID from config
+          if (dbId && dbId !== "(default)") {
+            db = getFirestore(adminApp, dbId);
+            console.log(`[Firebase] Firestore initialized with database: ${dbId}`);
+          } else {
+            db = getFirestore(adminApp);
+            console.log("[Firebase] Firestore initialized with default database");
           }
           
-          try {
-            db = getFirestore(firebaseConfig.firestoreDatabaseId || undefined);
-            console.log("[Firebase] Admin initialized successfully");
-            
-            // Test connection/permissions immediately
-            db.collection('test_connection').doc('server_boot').set({
-              timestamp: FieldValue.serverTimestamp(),
-              message: "Server started"
-            }).then(() => {
-              console.log("[Firebase] Connection test successful");
-            }).catch((err: any) => {
-              console.error("[Firebase] Connection test failed:", err.message);
-              if (err.message.includes('PERMISSION_DENIED')) {
-                console.error("[Firebase] CRITICAL: Permission denied. Check IAM roles and Security Rules.");
-              }
-            });
-          } catch (dbInitErr: any) {
-            console.error("[Firebase] Failed to initialize Firestore with database ID:", dbInitErr.message);
-            db = getFirestore(); // Fallback to default
+          // Test connection/permissions immediately
+          const testRef = db.collection('test_connection').doc('server_boot');
+          await testRef.set({
+            timestamp: FieldValue.serverTimestamp(),
+            message: "Server started",
+            env: process.env.NODE_ENV,
+            projectId,
+            dbId: dbId || '(default)'
+          }, { merge: true });
+          console.log("[Firebase] Connection test successful");
+        } catch (dbInitErr: any) {
+          console.error("[Firebase] Failed to initialize Firestore or connection test failed:", dbInitErr.message);
+          if (dbInitErr.message.includes('PERMISSION_DENIED') || dbInitErr.message.includes('NOT_FOUND')) {
+            console.error(`[Firebase] CRITICAL: ${dbInitErr.message.includes('PERMISSION_DENIED') ? 'Permission denied' : 'Database not found'}. Check IAM roles or database ID.`);
+            // Fallback to default database if named one fails
+            if (dbId && dbId !== "(default)") {
+              console.log("[Firebase] Attempting fallback to default database...");
+              db = getFirestore(adminApp);
+            }
           }
-        } else {
-          console.warn("Firebase projectId missing in config. Stats tracking disabled.");
         }
       } catch (jsonErr) {
         console.error("Failed to parse firebase-applet-config.json:", jsonErr);
@@ -91,6 +101,7 @@ const startServer = async () => {
     console.error("Failed to initialize Firebase Admin:", err);
   }
 
+  app.use(cors());
   app.use(express.json());
 
   // Email transporter setup
@@ -204,7 +215,10 @@ const startServer = async () => {
 
   // Global request logger
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    // Only log non-Vite internal requests to reduce noise
+    if (!req.url.startsWith('/@vite') && !req.url.startsWith('/src/') && !req.url.startsWith('/node_modules/')) {
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    }
     next();
   });
 
@@ -231,6 +245,8 @@ const startServer = async () => {
       console.error("Missing API keys in request handler");
       return res.status(500).json({ error: "API keys are missing. Please set GROQ_API_KEY and SERPER_API_KEY in settings." });
     }
+
+    const groq = new Groq({ apiKey: GROQ_API_KEY });
 
     try {
       // 1. Check if it's a simple greeting or conversational query
@@ -290,7 +306,11 @@ const startServer = async () => {
           { role: "user", content: query },
         ],
         model: "llama-3.3-70b-versatile",
-      }, { timeout: 20000 }); // 20 second timeout for AI
+      }, { timeout: 25000 }); // Increased timeout to 25 seconds
+
+      if (!chatCompletion || !chatCompletion.choices || chatCompletion.choices.length === 0) {
+        throw new Error("Groq API returned an empty response");
+      }
 
       const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
       const llamaTokens = chatCompletion.usage?.total_tokens || 0;
@@ -306,6 +326,7 @@ const startServer = async () => {
           const updateStats = async (ref: any) => {
             try {
               console.log(`Attempting to update stats at: ${ref.path}`);
+              // Ensure the document exists by using set with merge
               await ref.set({
                 totalRequests: FieldValue.increment(1),
                 llamaTokens: FieldValue.increment(llamaTokens),
@@ -313,8 +334,13 @@ const startServer = async () => {
                 lastUpdated: FieldValue.serverTimestamp(),
                 date: today
               }, { merge: true });
+              console.log(`Successfully updated stats at: ${ref.path}`);
             } catch (innerErr: any) {
               console.error(`Failed to update specific stat ref (${ref.path}):`, innerErr.message);
+              // If NOT_FOUND, it might be the database itself.
+              if (innerErr.message.includes('NOT_FOUND')) {
+                console.error(`[Firebase] Database or path not found for ${ref.path}. Check firestoreDatabaseId.`);
+              }
             }
           };
 

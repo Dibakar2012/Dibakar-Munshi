@@ -35,8 +35,24 @@
   --color-text: var(--color-text);
 }
 
-body {
-  @apply bg-background text-text font-sans transition-colors duration-300;
+/* Mobile optimizations */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overflow-x: hidden;
+    height: 100%;
+  }
+  
+  body {
+    @apply bg-background text-text font-sans transition-colors duration-300;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+    height: 100%;
+    min-height: calc(var(--vh, 1vh) * 100);
+    @apply select-none;
+  }
 }
 
 /* Glassmorphism for search bar */

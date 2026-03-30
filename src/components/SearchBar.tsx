@@ -152,25 +152,11 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
         }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
         className={cn(
-          "max-w-2xl mx-auto backdrop-blur-2xl rounded-3xl p-3 flex items-end gap-3 transition-all relative overflow-hidden border border-white/10",
+          "w-full max-w-2xl mx-auto backdrop-blur-2xl rounded-2xl md:rounded-3xl p-2 md:p-3 flex items-end gap-2 md:gap-3 transition-all relative overflow-hidden border border-white/10",
           disabled && "opacity-50 cursor-not-allowed"
         )}
       >
-        {/* Progress Bar for searching state */}
-        <AnimatePresence>
-          {disabled && (
-            <motion.div
-              initial={{ x: "-100%" }}
-              animate={{ x: "100%" }}
-              transition={{ 
-                repeat: Infinity, 
-                duration: 1.5, 
-                ease: "linear" 
-              }}
-              className="absolute top-0 left-0 h-[2px] w-full bg-gradient-to-r from-transparent via-primary to-transparent z-50"
-            />
-          )}
-        </AnimatePresence>
+        {/* Progress Bar for searching state removed as requested */}
 
         {/* Subtle background glow when focused */}
         <AnimatePresence>
@@ -204,24 +190,24 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
           placeholder="Ask Dibakar AI"
           disabled={disabled}
           autoFocus
-          className="flex-1 bg-transparent border-none outline-none py-3 px-3 md:px-0 resize-none text-base md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[48px] custom-scrollbar"
+          className="flex-1 bg-transparent border-none outline-none py-3 px-2 md:px-0 resize-none text-base md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
         />
 
-        <div className="flex items-center gap-2 pr-1 pb-1 relative z-10">
+        <div className="flex items-center gap-1.5 md:gap-2 pr-1 pb-1 relative z-10">
           <motion.button
             type="button"
             onClick={toggleListening}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className={cn(
-              "p-3 rounded-2xl transition-all shadow-lg",
+              "p-2.5 md:p-3 rounded-xl md:rounded-2xl transition-all shadow-lg",
               isListening 
-                ? "bg-red-500 text-white animate-pulse shadow-red-500/20" 
+                ? "bg-red-500 text-white shadow-red-500/20" 
                 : "bg-white/5 text-text-muted/40 hover:bg-white/10 hover:text-white"
             )}
             title={isListening ? "Stop Listening" : "Start Voice Search"}
           >
-            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+            {isListening ? <MicOff size={14} className="md:w-4 md:h-4" /> : <Mic size={14} className="md:w-4 md:h-4" />}
           </motion.button>
 
           <AnimatePresence>
@@ -232,7 +218,6 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
                 exit={{ opacity: 0, x: 10 }}
                 className="hidden md:flex items-center gap-1 text-[10px] font-bold text-primary/60 uppercase tracking-widest px-2"
               >
-                <Sparkles size={12} />
                 Ready
               </motion.div>
             )}

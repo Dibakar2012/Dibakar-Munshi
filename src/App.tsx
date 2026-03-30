@@ -36,6 +36,23 @@ export default function App() {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   useEffect(() => {
+    // Handle mobile viewport height issues
+    const setVH = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+    
+    setVH();
+    window.addEventListener('resize', setVH);
+    window.addEventListener('orientationchange', setVH);
+    
+    return () => {
+      window.removeEventListener('resize', setVH);
+      window.removeEventListener('orientationchange', setVH);
+    };
+  }, []);
+
+  useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'light') {
       setIsDarkMode(false);
@@ -319,7 +336,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-screen bg-background flex items-center justify-center">
+      <div className="h-[100dvh] bg-background flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -327,7 +344,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+      <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-6 text-center">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -451,7 +468,7 @@ export default function App() {
   const showPaywall = (user.credits <= 0 && user.role !== 'admin') || isPaywallOpen;
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-[100dvh] min-h-[calc(var(--vh,1vh)*100)] bg-background flex flex-col overflow-hidden">
       <Toaster position="top-center" richColors />
       <AnimatePresence>
         {isHistoryOpen && (
@@ -467,21 +484,28 @@ export default function App() {
       </AnimatePresence>
 
       <main className="flex-1 flex flex-col relative overflow-hidden">
-        <header className="h-16 border-b border-border flex items-center justify-between px-4 md:px-6 bg-background/50 backdrop-blur-md sticky top-0 z-10">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-primary md:hidden">Dibakar AI</h1>
-            <div className="flex items-center gap-2 bg-surface px-3 py-1.5 rounded-full border border-border">
-              <CreditCard size={14} className="text-primary" />
-              <span className="text-xs md:text-sm font-bold">
-                {user.role === 'admin' ? 'Unlimited' : `${user.credits} Credits`}
+        <header className={`h-14 md:h-16 border-b border-border flex items-center justify-between px-3 md:px-6 bg-background/50 backdrop-blur-md sticky top-0 transition-all ${isMoreMenuOpen ? 'z-[100]' : 'z-10'}`}>
+          <div className="flex items-center gap-2 md:gap-4">
+            <button 
+              onClick={() => setIsHistoryOpen(true)}
+              className="p-2 hover:bg-surface-hover rounded-xl text-text-muted md:hidden"
+            >
+              <History size={20} />
+            </button>
+            <h1 className="text-lg md:text-xl font-bold text-primary hidden sm:block">Dibakar AI</h1>
+            <div className="flex items-center gap-1.5 md:gap-2 bg-surface px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-border">
+              <CreditCard size={12} className="text-primary md:hidden" />
+              <CreditCard size={14} className="text-primary hidden md:block" />
+              <span className="text-[10px] md:text-sm font-bold">
+                {user?.role === 'admin' ? 'Unlimited' : `${user?.credits || 0} Cr`}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-text-muted">
+          <div className="flex items-center gap-2 md:gap-4">
+            <div className="hidden sm:flex items-center gap-2 text-sm text-text-muted">
               <User size={16} />
-              <span className="hidden md:inline">{user.email || user.phoneNumber}</span>
+              <span className="hidden md:inline">{user?.email || user?.phoneNumber || 'User'}</span>
             </div>
             
             <div className="relative">
@@ -496,49 +520,49 @@ export default function App() {
                 {isMoreMenuOpen && (
                   <>
                     <div 
-                      className="fixed inset-0 z-40" 
+                      className="fixed inset-0 z-40 bg-transparent" 
                       onClick={() => setIsMoreMenuOpen(false)} 
                     />
                     <motion.div
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute right-0 mt-2 w-56 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden"
+                      className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-56 bg-surface border border-border rounded-2xl shadow-2xl z-50 overflow-hidden"
                     >
                       <div className="p-4 border-b border-border">
-                        <p className="text-xs text-text-muted uppercase tracking-widest mb-1">Profile</p>
-                        <p className="text-sm font-bold truncate">{user.email || user.phoneNumber}</p>
+                        <p className="text-[10px] text-text-muted uppercase tracking-widest mb-1">Profile</p>
+                        <p className="text-sm font-bold truncate">{user?.email || user?.phoneNumber || 'User'}</p>
                         <p className="text-[10px] text-primary font-bold mt-1 uppercase tracking-tighter">
-                          {user.role === 'admin' ? 'Administrator' : 'Free User'}
+                          {user?.role === 'admin' ? 'Administrator' : 'Free User'}
                         </p>
                       </div>
 
-                      <div className="p-2">
+                      <div className="p-2 grid grid-cols-2 sm:grid-cols-1 gap-1">
                         <button
                           onClick={() => { setIsMoreMenuOpen(false); setIsHistoryOpen(true); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors"
                         >
                           <History size={16} /> History
                         </button>
 
                         <button
                           onClick={() => { setIsMoreMenuOpen(false); setIsPaywallOpen(true); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors"
                         >
-                          <Zap size={16} /> Subscription Plan
+                          <Zap size={16} /> Plans
                         </button>
 
                         <button
                           onClick={toggleTheme}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors"
                         >
                           {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
-                          {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+                          Theme
                         </button>
 
                         <button
                           onClick={() => { setIsMoreMenuOpen(false); setIsFeedbackOpen(true); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors"
                         >
                           <MessageSquarePlus size={16} /> Feedback
                         </button>
@@ -548,23 +572,23 @@ export default function App() {
                             setIsMoreMenuOpen(false); 
                             window.location.href = 'tel:9242959903';
                           }}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors"
+                          className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors"
                         >
-                          <Phone size={16} /> Customer Care
+                          <Phone size={16} /> Support
                         </button>
                         
                         {user.role === 'admin' && (
                           <button
                             onClick={() => { setIsAdminOpen(true); setIsMoreMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors text-primary"
+                            className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors text-primary"
                           >
-                            <LayoutDashboard size={16} /> Admin Dashboard
+                            <LayoutDashboard size={16} /> Admin
                           </button>
                         )}
 
                         <button
                           onClick={handleLogout}
-                          className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-surface-hover rounded-lg transition-colors text-red-500"
+                          className="col-span-2 sm:col-span-1 flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors text-red-500"
                         >
                           <LogOut size={16} /> Logout
                         </button>

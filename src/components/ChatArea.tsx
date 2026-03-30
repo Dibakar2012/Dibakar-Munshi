@@ -26,20 +26,20 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
             href={source.link}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-lg hover:border-primary transition-all shrink-0 max-w-[150px]"
+            className="flex items-center gap-2 px-2.5 md:px-3 py-1 md:py-1.5 bg-surface border border-border rounded-lg hover:border-primary transition-all shrink-0 max-w-[120px] md:max-w-[150px]"
           >
-            <div className="w-4 h-4 rounded bg-primary/10 flex items-center justify-center shrink-0">
-              <Globe size={10} className="text-primary" />
+            <div className="w-3.5 h-3.5 md:w-4 md:h-4 rounded bg-primary/10 flex items-center justify-center shrink-0">
+              <Globe className="text-primary w-2 h-2 md:w-2.5 md:h-2.5" />
             </div>
-            <span className="text-[10px] font-bold truncate text-text-muted group-hover:text-primary">{source.title}</span>
+            <span className="text-[9px] md:text-[10px] font-bold truncate text-text-muted group-hover:text-primary">{source.title}</span>
           </a>
         ))}
         {sources.length > 3 && (
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className="flex items-center gap-1 px-3 py-1.5 bg-surface border border-border rounded-lg hover:border-primary transition-all text-[10px] font-bold text-text-muted shrink-0"
+            className="flex items-center gap-1 px-2.5 md:px-3 py-1 md:py-1.5 bg-surface border border-border rounded-lg hover:border-primary transition-all text-[9px] md:text-[10px] font-bold text-text-muted shrink-0"
           >
-            +{sources.length - 3} more
+            +{sources.length - 3}
           </button>
         )}
       </div>
@@ -52,23 +52,23 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 md:gap-2 mt-2">
               {sources.map((source, i) => (
                 <a
                   key={i}
                   href={source.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-2 bg-surface border border-border rounded-xl hover:border-primary transition-all group flex flex-col gap-1"
+                  className="p-1.5 md:p-2 bg-surface border border-border rounded-lg md:rounded-xl hover:border-primary transition-all group flex flex-col gap-0.5 md:gap-1"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <Globe size={10} className="text-primary" />
-                      <span className="text-[8px] text-text-muted truncate uppercase tracking-widest font-bold">Source {i + 1}</span>
+                    <div className="flex items-center gap-1 md:gap-1.5">
+                      <Globe className="text-primary w-2 h-2 md:w-2.5 md:h-2.5" />
+                      <span className="text-[7px] md:text-[8px] text-text-muted truncate uppercase tracking-widest font-bold">Source {i + 1}</span>
                     </div>
-                    <ExternalLink size={10} className="text-text-muted group-hover:text-primary" />
+                    <ExternalLink className="text-text-muted group-hover:text-primary w-2 h-2 md:w-2.5 md:h-2.5" />
                   </div>
-                  <h4 className="text-[10px] font-bold truncate group-hover:text-primary">{source.title}</h4>
+                  <h4 className="text-[9px] md:text-[10px] font-bold truncate group-hover:text-primary">{source.title}</h4>
                 </a>
               ))}
             </div>
@@ -193,11 +193,20 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)).reverse();
-      setMessages(newMessages);
-      
-      // If we got fewer messages than the limit, we've reached the end
-      if (snapshot.docs.length < msgLimit) {
+      try {
+        const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)).reverse();
+        setMessages(newMessages);
+        
+        // If we got fewer messages than the limit, we've reached the end
+        if (snapshot.docs.length < msgLimit) {
+          setHasMore(false);
+        }
+      } catch (err: any) {
+        console.error('Error processing messages snapshot:', err);
+      }
+    }, (err) => {
+      console.error('Firestore snapshot error in ChatArea:', err);
+      if (err.message?.includes('Missing or insufficient permissions')) {
         setHasMore(false);
       }
     });
@@ -275,28 +284,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
       onScroll={handleScroll}
       className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-8 relative"
     >
-      {/* Top Progress Bar for searching state */}
-      <AnimatePresence>
-        {isSearching && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="sticky top-0 left-0 right-0 z-20 h-1 w-full bg-surface overflow-hidden"
-          >
-            <motion.div
-              initial={{ x: "-100%" }}
-              animate={{ x: "100%" }}
-              transition={{ 
-                repeat: Infinity, 
-                duration: 2, 
-                ease: "easeInOut" 
-              }}
-              className="h-full w-1/3 bg-gradient-to-r from-transparent via-primary to-transparent"
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Top Progress Bar for searching state removed as requested */}
 
       {hasMore && (
         <div className="flex justify-center py-4">
@@ -317,17 +305,17 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
             className="w-full"
           >
             <div className={cn(
-              "flex gap-3 md:gap-6 max-w-2xl mx-auto w-full",
+              "flex gap-2 md:gap-6 max-w-2xl mx-auto w-full",
               msg.role === 'user' ? "justify-end" : "justify-start"
             )}>
               {msg.role === 'assistant' && (
-                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                  <Bot size={14} className="text-primary" />
+                <div className="w-5 h-5 md:w-6 md:h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+                  <Bot className="text-primary w-3 h-3 md:w-3.5 md:h-3.5" />
                 </div>
               )}
               <div className={cn(
-                "flex flex-col gap-4 group",
-                msg.role === 'user' ? "items-end max-w-[85%] ml-auto" : "items-start flex-1"
+                "flex flex-col gap-3 md:gap-4 group",
+                msg.role === 'user' ? "items-end max-w-[90%] md:max-w-[85%] ml-auto" : "items-start flex-1"
               )}>
                 {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
                   <SourcesToggle sources={msg.sources} />
@@ -336,7 +324,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
                 <div className={cn(
                   "relative",
                   msg.role === 'user' 
-                    ? "px-4 py-2.5 rounded-2xl bg-primary text-white shadow-sm w-fit max-w-full" 
+                    ? "px-3.5 md:px-4 py-2 md:py-2.5 rounded-2xl bg-primary text-white shadow-sm w-fit max-w-full" 
                     : "pt-0 w-full"
                 )}>
                   <div className={cn(
@@ -346,7 +334,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                   {msg.role === 'assistant' && (
-                    <div className="flex items-center gap-2 mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 mt-4 md:mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
                       <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} />
                       <CopyButton content={msg.content} />
                     </div>
@@ -354,62 +342,13 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
                 </div>
               </div>
               {msg.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
-                  <User size={18} />
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
+                  <User className="w-3.5 h-3.5 md:w-4.5 md:h-4.5" />
                 </div>
               )}
             </div>
           </motion.div>
         ))}
-
-        {isSearching && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex gap-3 md:gap-6 max-w-2xl mx-auto w-full"
-          >
-            <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1 border border-primary/20">
-              <motion.div
-                animate={{ 
-                  rotate: 360,
-                  scale: [1, 1.1, 1]
-                }}
-                transition={{ 
-                  rotate: { repeat: Infinity, duration: 2, ease: "linear" },
-                  scale: { repeat: Infinity, duration: 1, ease: "easeInOut" }
-                }}
-              >
-                <Bot size={14} className="text-primary" />
-              </motion.div>
-            </div>
-            <div className="bg-surface/30 border border-border/50 p-3 rounded-2xl rounded-tl-none w-fit min-w-[120px] backdrop-blur-md shadow-inner">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="flex gap-1.5">
-                    {[0, 1, 2].map((i) => (
-                      <motion.div
-                        key={i}
-                        animate={{ 
-                          y: [0, -4, 0],
-                          opacity: [0.3, 1, 0.3],
-                          scale: [1, 1.2, 1]
-                        }}
-                        transition={{ 
-                          repeat: Infinity, 
-                          duration: 0.8, 
-                          delay: i * 0.15,
-                          ease: "easeInOut"
-                        }}
-                        className="w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">Analyzing</span>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
       </AnimatePresence>
       <div ref={scrollRef} />
 

@@ -6,7 +6,7 @@ import { Chat } from '../types';
 import { Plus, MessageSquare, MoreVertical, Trash, Edit2, ChevronLeft, ChevronRight, LayoutDashboard, X } from 'lucide-react';
 import { format, isToday, isYesterday, isAfter, subDays } from 'date-fns';
 import { cn } from '../lib/utils';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarProps {
   currentChatId: string | null;
@@ -22,6 +22,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
@@ -78,9 +79,8 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Delete this chat?')) {
-      await deleteDoc(doc(db, 'chats', id));
-    }
+    await deleteDoc(doc(db, 'chats', id));
+    setDeleteConfirmId(null);
   };
 
   const groups = groupChats();
@@ -100,7 +100,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
         animate={{ x: 0 }}
         exit={{ x: '-100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="relative w-full max-w-[280px] h-full bg-surface border-r border-border flex flex-col shadow-2xl"
+        className="relative w-[85%] max-w-[320px] h-full bg-surface border-r border-border flex flex-col shadow-2xl"
       >
         <div className="p-4 flex items-center justify-between border-b border-border">
           <span className="font-bold text-xl text-primary">Chat History</span>
@@ -117,7 +117,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
           <span>New Chat</span>
         </button>
 
-        <div className="flex-1 overflow-y-auto px-2 pb-20">
+        <div className="flex-1 overflow-y-auto px-2 pb-4">
           {Object.entries(groups).map(([label, groupChats]) => (
             groupChats.length > 0 && (
               <div key={label} className="mb-6">
@@ -148,32 +148,79 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
                         chat.title
                       )}
                     </div>
-                    {currentChatId === chat.id && (
+                    <div className="flex items-center gap-1">
                       <div className="relative">
                         <button
                           onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === chat.id ? null : chat.id); }}
-                          className="p-1.5 hover:bg-primary/20 rounded-lg transition-colors"
+                          className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-text-muted hover:text-white"
                         >
                           <MoreVertical size={14} />
                         </button>
-                        {menuOpenId === chat.id && (
-                          <div className="absolute right-0 mt-2 w-36 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setEditingChatId(chat.id); setEditTitle(chat.title); setMenuOpenId(null); }}
-                              className="w-full flex items-center gap-2 px-4 py-3 text-xs font-medium hover:bg-surface-hover transition-colors"
+                        
+                        <AnimatePresence>
+                          {menuOpenId === chat.id && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.95, y: 5 }}
+                              animate={{ opacity: 1, scale: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.95, y: 5 }}
+                              className="absolute right-0 mt-2 w-36 bg-surface border border-border rounded-xl shadow-2xl z-50 overflow-hidden"
                             >
-                              <Edit2 size={12} /> Rename
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDelete(chat.id); setMenuOpenId(null); }}
-                              className="w-full flex items-center gap-2 px-4 py-3 text-xs font-medium hover:bg-surface-hover text-red-500 transition-colors"
-                            >
-                              <Trash size={12} /> Delete
-                            </button>
-                          </div>
-                        )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingChatId(chat.id); setEditTitle(chat.title); setMenuOpenId(null); }}
+                                className="w-full flex items-center gap-2 px-4 py-3 text-xs font-medium hover:bg-surface-hover transition-colors"
+                              >
+                                <Edit2 size={12} /> Rename
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(chat.id); setMenuOpenId(null); }}
+                                className="w-full flex items-center gap-2 px-4 py-3 text-xs font-medium hover:bg-surface-hover text-red-500 transition-colors"
+                              >
+                                <Trash size={12} /> Delete
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                    )}
+                    </div>
+
+                    <AnimatePresence>
+                      {deleteConfirmId === chat.id && (
+                        <div 
+                          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(null); }}
+                        >
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-surface border border-border rounded-2xl p-6 max-w-xs w-full shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4 mx-auto">
+                              <Trash className="text-red-500" size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-center mb-2">Delete Chat?</h3>
+                            <p className="text-sm text-text-muted text-center mb-6">
+                              This action cannot be undone. All messages in this chat will be lost.
+                            </p>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => setDeleteConfirmId(null)}
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-surface-hover hover:bg-border text-sm font-bold transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleDelete(chat.id)}
+                                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 ))}
               </div>
@@ -181,8 +228,16 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
           ))}
         </div>
 
-        {isAdmin && (
-          <div className="p-4 border-t border-border bg-surface/50">
+        <div className="p-4 border-t border-border bg-surface/50 space-y-2">
+          <button
+            onClick={() => window.location.href = 'tel:9242959903'}
+            className="w-full flex items-center justify-center gap-2 bg-surface-hover hover:bg-border text-text-muted rounded-xl p-3 font-bold transition-all text-sm"
+          >
+            <Plus size={18} className="rotate-45" />
+            <span>Customer Care</span>
+          </button>
+          
+          {isAdmin && (
             <button
               onClick={onOpenAdmin}
               className="w-full flex items-center justify-center gap-2 bg-surface-hover hover:bg-border text-primary rounded-xl p-3 font-bold transition-all text-sm"
@@ -190,8 +245,8 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
               <LayoutDashboard size={18} />
               <span>Admin Dashboard</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </motion.div>
     </div>
   );

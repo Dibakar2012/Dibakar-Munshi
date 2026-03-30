@@ -1,6 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertCircle, RefreshCw, Home } from 'lucide-react';
-import { motion } from 'motion/react';
 
 interface Props {
   children: ReactNode;
@@ -9,72 +8,84 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: ErrorInfo | null;
 }
 
 class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
+    errorInfo: null
   };
 
   public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+    return { hasError: true, error, errorInfo: null };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+    this.setState({ errorInfo });
+    
+    // Check if it's a Firestore permission error
+    if (error.message && error.message.includes('permission')) {
+      console.warn('Firestore Permission Error detected in ErrorBoundary');
+    }
   }
 
   private handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, errorInfo: null });
     window.location.reload();
+  };
+
+  private handleGoHome = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    window.location.href = '/';
   };
 
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 text-white font-sans">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-md w-full glass p-10 rounded-[2.5rem] border border-white/10 text-center space-y-8 shadow-[0_0_100px_rgba(59,130,246,0.1)]"
-          >
-            <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto border border-red-500/20">
-              <AlertCircle className="text-red-500" size={40} />
+        <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4 font-sans">
+          <div className="max-w-md w-full bg-[#111111] border border-white/10 rounded-2xl p-8 text-center shadow-2xl">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-500/10 mb-6">
+              <AlertCircle className="w-8 h-8 text-red-500" />
             </div>
             
-            <div className="space-y-3">
-              <h1 className="text-3xl font-black tracking-tighter uppercase">System Error</h1>
-              <p className="text-sm text-white/40 font-medium leading-relaxed">
-                Something went wrong while processing your request. Our systems have logged this incident.
-              </p>
-              {this.state.error && (
-                <div className="mt-4 p-4 bg-red-500/5 border border-red-500/10 rounded-2xl text-[10px] font-mono text-red-400/80 text-left overflow-auto max-h-32 custom-scrollbar">
-                  {this.state.error.message}
-                </div>
-              )}
-            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Something went wrong</h1>
+            <p className="text-gray-400 mb-8 text-sm leading-relaxed">
+              We encountered an unexpected error. This might be due to a connection issue or a temporary glitch.
+            </p>
+
+            {this.state.error && (
+              <div className="bg-black/40 rounded-lg p-4 mb-8 text-left overflow-auto max-h-32 border border-white/5">
+                <code className="text-xs text-red-400/80 break-all">
+                  {this.state.error.toString()}
+                </code>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
               <button
                 onClick={this.handleReset}
-                className="w-full bg-primary hover:bg-blue-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-lg shadow-primary/20"
+                className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-white text-black font-semibold rounded-xl hover:bg-gray-200 transition-colors"
               >
-                <RefreshCw size={18} /> Restart Dibakar AI
+                <RefreshCw className="w-4 h-4" />
+                Try Again
               </button>
               
               <button
-                onClick={() => window.location.href = '/'}
-                className="w-full bg-white/5 hover:bg-white/10 text-white/60 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all border border-white/5"
+                onClick={this.handleGoHome}
+                className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-white/5 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors border border-white/10"
               >
-                <Home size={18} /> Back to Home
+                <Home className="w-4 h-4" />
+                Go to Home
               </button>
             </div>
-
-            <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.2em]">
-              Error Code: 0x554A2B
+            
+            <p className="mt-8 text-[10px] text-gray-600 uppercase tracking-widest font-mono">
+              Dibakar AI • Error System
             </p>
-          </motion.div>
+          </div>
         </div>
       );
     }
