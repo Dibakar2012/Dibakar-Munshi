@@ -25,7 +25,7 @@ export const app = express();
 
 const startServer = async () => {
   console.log("Starting Dibakar AI Server...");
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Initialize Groq inside startServer to use latest env vars
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -222,13 +222,14 @@ const startServer = async () => {
     next();
   });
 
-  // Health check
+  // Health check and Keep-alive
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 
       firebase: !!db, 
       hasKeys: !!(GROQ_API_KEY && SERPER_API_KEY),
-      env: process.env.NODE_ENV
+      env: process.env.NODE_ENV,
+      uptime: process.uptime()
     });
   });
 
