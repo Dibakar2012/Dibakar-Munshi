@@ -11,7 +11,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Paywall from './components/Paywall';
 import PermissionPopup from './components/PermissionPopup';
 import FeedbackModal from './components/FeedbackModal';
-import { LogIn, LogOut, CreditCard, User, ShieldCheck, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
+import { LogIn, LogOut, CreditCard, User, ShieldCheck, ShieldAlert, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { Toaster } from 'sonner';
@@ -75,6 +75,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Safety timeout for loading state
+    const loadingTimeout = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) {
+          console.warn('Loading safety timeout reached');
+          return false;
+        }
+        return prev;
+      });
+    }, 15000); // 15 seconds
+
     async function testConnection() {
       try {
         await getDocFromServer(doc(db, 'test', 'connection'));
@@ -82,7 +93,8 @@ export default function App() {
       } catch (err: any) {
         console.warn('Firestore connection test failed:', err.message);
         if (err.message?.includes('the client is offline')) {
-          setError('Firestore is offline. Please check your Firebase configuration or internet connection.');
+          console.warn('Firestore is offline. Proceeding with cached data if available.');
+          // Don't set a blocking error for offline state
         } else if (err.message?.includes('PERMISSION_DENIED')) {
           console.warn('Permission denied for connection test. This is often normal if rules are strictly locked down.');
         }
@@ -160,6 +172,11 @@ export default function App() {
               setUser(doc.data() as UserProfile);
               setIsAuthReady(true);
               setLoading(false);
+            } else {
+              // If document doesn't exist, we still need to stop loading
+              // This might happen if creation is pending or failed
+              console.warn('User profile document does not exist yet');
+              setLoading(false);
             }
           }, (err) => {
             console.error('Firestore snapshot error:', err);
@@ -179,6 +196,7 @@ export default function App() {
     });
 
     return () => {
+      clearTimeout(loadingTimeout);
       authUnsubscribe();
       if (userUnsubscribe) userUnsubscribe();
     };
@@ -328,11 +346,36 @@ export default function App() {
     }
   };
 
-  if (loading) {
+  if (loading && !error) {
     return (
       <div className="h-[100dvh] bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         <p className="text-primary font-medium animate-pulse">Loading Dibakar AI...</p>
+      </div>
+    );
+  }
+
+  if (error && !user) {
+    return (
+      <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-4 text-center overflow-hidden relative">
+        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px] animate-pulse" />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-sm w-full auth-card p-8 rounded-[3rem] space-y-6 relative z-10 border border-white/10 shadow-2xl"
+        >
+          <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-500/20">
+            <ShieldAlert className="text-red-500" size={32} />
+          </div>
+          <h1 className="text-2xl font-black tracking-tighter text-white">CONNECTION ERROR</h1>
+          <p className="text-text-muted text-sm font-medium">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg hover:bg-white/90 transition-all shadow-xl"
+          >
+            RETRY CONNECTION
+          </button>
+        </motion.div>
       </div>
     );
   }

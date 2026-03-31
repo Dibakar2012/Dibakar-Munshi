@@ -12,10 +12,8 @@ const dbId = firebaseConfig.firestoreDatabaseId &&
              ? firebaseConfig.firestoreDatabaseId 
              : undefined;
 
-// Initialize Firestore with long-polling for better compatibility in some environments
-export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true,
-}, dbId);
+// Initialize Firestore
+export const db = initializeFirestore(app, {}, dbId);
 
 // Enable persistence
 if (typeof window !== 'undefined') {
