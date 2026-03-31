@@ -16,7 +16,30 @@ app.get('/api/health', (c) => {
   return c.json({ status: "ok", environment: "cloudflare-workers" });
 });
 
-// Search API (Optimized for Workers)
+// Title API
+app.post('/api/title', async (c) => {
+  const { query } = await c.req.json();
+  const GROQ_API_KEY = c.env.GROQ_API_KEY;
+
+  if (!GROQ_API_KEY) return c.json({ error: "API key missing" }, 500);
+
+  const groq = new Groq({ apiKey: GROQ_API_KEY });
+
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: "Tu ek AI hai jo user ke query ke liye ek chota (max 4-5 words) title generate karta hai. Sirf title de, aur kuch nahi." },
+        { role: "user", content: query }
+      ],
+      model: "llama-3.1-8b-instant",
+    });
+    return c.json({ title: completion.choices[0]?.message?.content?.replace(/"/g, '') || "New Chat" });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// Search API
 app.post('/api/search', async (c) => {
   const { query, history = [] } = await c.req.json();
   const GROQ_API_KEY = c.env.GROQ_API_KEY;
@@ -56,6 +79,17 @@ app.post('/api/search', async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
   }
+});
+
+// Premium Request API (Placeholder for Email)
+app.post('/api/premium-request', async (c) => {
+  const { email, name, message } = await c.req.json();
+  
+  // Note: Cloudflare Workers don't support direct SMTP (nodemailer).
+  // You should use a service like Resend or SendGrid via HTTP API.
+  console.log(`Premium request from ${name} (${email}): ${message}`);
+  
+  return c.json({ success: true, message: "Request received! We will contact you soon." });
 });
 
 export default app;
