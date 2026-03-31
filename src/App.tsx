@@ -106,91 +106,105 @@ export default function App() {
 
     console.log('Auth state listener initialized');
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'No user');
+      console.log('Auth state changed:', firebaseUser ? `User logged in: ${firebaseUser.email || firebaseUser.uid}` : 'No user (logged out)');
       
+      if (!firebaseUser) {
+        console.log('Clearing user state...');
+        setUser(null);
+        setIsAuthReady(false);
+        setLoading(false);
+        return;
+      }
+
       // Clean up previous user listener
       if (userUnsubscribe) {
         userUnsubscribe();
         userUnsubscribe = null;
       }
 
-      if (firebaseUser) {
+      // Set provisional user to prevent login loop while fetching profile
+      console.log('Setting provisional user state...');
+      setUser({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        name: firebaseUser.displayName || 'User',
+        role: 'user',
+        credits: 0,
+        createdAt: new Date().toISOString()
+      } as UserProfile);
+
+      try {
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        let userSnap;
         try {
-          const userRef = doc(db, 'users', firebaseUser.uid);
-          let userSnap;
-          try {
-            userSnap = await getDoc(userRef);
-          } catch (err: any) {
-            console.warn('Initial user profile fetch failed:', err.message);
-            if (err.message?.includes('the client is offline')) {
-              // If offline, we might still have data in cache or we'll get it via onSnapshot
-              // We'll proceed and let onSnapshot handle the real-time updates
-              console.log('Proceeding in offline mode...');
-            } else {
-              throw err; // Re-throw other errors
-            }
-          }
-
-          if (userSnap) {
-            if (!userSnap.exists()) {
-              console.log('Creating new user document...');
-              const isAdmin = 
-                firebaseUser.email === "munshidipa62@gmail.com" || 
-                firebaseUser.email === "dibakar61601@gmail.com" ||
-                firebaseUser.phoneNumber === "+919475954278";
-
-              const newUser: any = {
-                uid: firebaseUser.uid,
-                credits: isAdmin ? 999999 : 10,
-                role: isAdmin ? 'admin' : 'user',
-                createdAt: new Date().toISOString()
-              };
-              
-              if (firebaseUser.email) newUser.email = firebaseUser.email;
-              if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
-              
-              await setDoc(userRef, newUser);
-              console.log('New user document created.');
-            } else {
-              // Check if user should be admin but isn't yet
-              const userData = userSnap.data();
-              const shouldBeAdmin = 
-                firebaseUser.email === "munshidipa62@gmail.com" || 
-                firebaseUser.email === "dibakar61601@gmail.com" ||
-                firebaseUser.phoneNumber === "+919475954278";
-              
-              if (shouldBeAdmin && userData.role !== 'admin') {
-                await updateDoc(userRef, { role: 'admin', credits: 999999 });
-              }
-            }
-          }
-
-          // Real-time listener for credits and role
-          userUnsubscribe = onSnapshot(userRef, (doc) => {
-            if (doc.exists()) {
-              console.log('User profile updated from Firestore');
-              setUser(doc.data() as UserProfile);
-              setIsAuthReady(true);
-              setLoading(false);
-            } else {
-              // If document doesn't exist, we still need to stop loading
-              // This might happen if creation is pending or failed
-              console.warn('User profile document does not exist yet');
-              setLoading(false);
-            }
-          }, (err) => {
-            console.error('Firestore snapshot error:', err);
-            setError(`Firestore Error: ${err.message}`);
-            setLoading(false);
-          });
+          userSnap = await getDoc(userRef);
         } catch (err: any) {
-          console.error('Error in auth state change handler:', err);
-          setError(`Auth Handler Error: ${err.message}`);
-          setLoading(false);
+          console.warn('Initial user profile fetch failed:', err.message);
+          if (err.message?.includes('the client is offline')) {
+            // If offline, we might still have data in cache or we'll get it via onSnapshot
+            // We'll proceed and let onSnapshot handle the real-time updates
+            console.log('Proceeding in offline mode...');
+          } else {
+            throw err; // Re-throw other errors
+          }
         }
-      } else {
-        setUser(null);
-        setIsAuthReady(false);
+
+        if (userSnap) {
+          if (!userSnap.exists()) {
+            console.log('Creating new user document...');
+            const isAdmin = 
+              firebaseUser.email === "munshidipa62@gmail.com" || 
+              firebaseUser.email === "dibakar61601@gmail.com" ||
+              firebaseUser.phoneNumber === "+919475954278";
+
+            const newUser: any = {
+              uid: firebaseUser.uid,
+              credits: isAdmin ? 999999 : 10,
+              role: isAdmin ? 'admin' : 'user',
+              createdAt: new Date().toISOString()
+            };
+            
+            if (firebaseUser.email) newUser.email = firebaseUser.email;
+            if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
+            
+            await setDoc(userRef, newUser);
+            console.log('New user document created.');
+          } else {
+            // Check if user should be admin but isn't yet
+            const userData = userSnap.data();
+            const shouldBeAdmin = 
+              firebaseUser.email === "munshidipa62@gmail.com" || 
+              firebaseUser.email === "dibakar61601@gmail.com" ||
+              firebaseUser.phoneNumber === "+919475954278";
+            
+            if (shouldBeAdmin && userData.role !== 'admin') {
+              await updateDoc(userRef, { role: 'admin', credits: 999999 });
+            }
+          }
+        }
+
+        // Real-time listener for credits and role
+        userUnsubscribe = onSnapshot(userRef, (doc) => {
+          if (doc.exists()) {
+            console.log('User profile updated from Firestore');
+            const userData = doc.data() as UserProfile;
+            setUser(userData);
+            setIsAuthReady(true);
+            setLoading(false);
+          } else {
+            // The creation logic above should have triggered, but we wait
+            console.warn('User profile document does not exist yet');
+            // We don't call setLoading(false) here yet, let the creation finish
+            // or wait for the next snapshot
+          }
+        }, (err) => {
+          console.error('Firestore snapshot error:', err);
+          setError(`Firestore Error: ${err.message}`);
+          setLoading(false);
+        });
+      } catch (err: any) {
+        console.error('Error in auth state change handler:', err);
+        setError(`Auth Handler Error: ${err.message}`);
         setLoading(false);
       }
     });
@@ -207,9 +221,12 @@ export default function App() {
   const handleLogin = async () => {
     console.log('Attempting login with Google...');
     setLoading(true);
+    setError(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('Login successful:', result.user.email);
+      // We don't set loading to false here. 
+      // The onAuthStateChanged listener will handle it once the profile is ready.
     } catch (error: any) {
       console.error('Login Error:', error.code, error.message);
       if (error.code === 'auth/unauthorized-domain') {
@@ -217,7 +234,6 @@ export default function App() {
       } else {
         setError(`Login failed: ${error.message}`);
       }
-    } finally {
       setLoading(false);
     }
   };
@@ -457,7 +473,7 @@ export default function App() {
     );
   }
 
-  const showPaywall = (user.credits <= 0 && user.role !== 'admin') || isPaywallOpen;
+  const showPaywall = isAuthReady && ((user.credits <= 0 && user.role !== 'admin') || isPaywallOpen);
 
   return (
     <div className="h-[100dvh] min-h-[calc(var(--vh,1vh)*100)] bg-background flex flex-col overflow-hidden">
