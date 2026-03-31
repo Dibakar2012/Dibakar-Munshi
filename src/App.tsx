@@ -14,7 +14,7 @@ import FeedbackModal from './components/FeedbackModal';
 import { LogIn, LogOut, CreditCard, User, ShieldCheck, ShieldAlert, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { Toaster } from 'sonner';
+import { toast, Toaster } from 'sonner';
 
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -65,6 +65,7 @@ export default function App() {
   const toggleTheme = () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
+    console.log('Theme toggled. New mode is dark:', newMode);
     if (newMode) {
       document.documentElement.classList.remove('light');
       localStorage.setItem('theme', 'dark');
@@ -138,49 +139,54 @@ export default function App() {
         let userSnap;
         try {
           userSnap = await getDoc(userRef);
+          console.log('User document exists:', userSnap.exists());
         } catch (err: any) {
           console.warn('Initial user profile fetch failed:', err.message);
-          if (err.message?.includes('the client is offline')) {
-            // If offline, we might still have data in cache or we'll get it via onSnapshot
-            // We'll proceed and let onSnapshot handle the real-time updates
-            console.log('Proceeding in offline mode...');
-          } else {
-            throw err; // Re-throw other errors
-          }
+          // If it's a permission error, we'll still try to proceed
         }
 
-        if (userSnap) {
-          if (!userSnap.exists()) {
-            console.log('Creating new user document...');
-            const isAdmin = 
-              firebaseUser.email === "munshidipa62@gmail.com" || 
-              firebaseUser.email === "munshidipa@gmail.com" || 
-              firebaseUser.email === "dibakar61601@gmail.com" ||
-              firebaseUser.phoneNumber === "+919475954278";
+        const isAdminEmail = 
+          firebaseUser.email?.toLowerCase() === "munshidipa62@gmail.com" || 
+          firebaseUser.email?.toLowerCase() === "munshidipa@gmail.com" || 
+          firebaseUser.email?.toLowerCase() === "dibakar61601@gmail.com" ||
+          firebaseUser.phoneNumber === "+919475954278";
 
-            const newUser: any = {
-              uid: firebaseUser.uid,
-              credits: isAdmin ? 999999 : 10,
-              role: isAdmin ? 'admin' : 'user',
-              createdAt: new Date().toISOString()
-            };
-            
-            if (firebaseUser.email) newUser.email = firebaseUser.email;
-            if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
-            
-            await setDoc(userRef, newUser);
-            console.log('New user document created.');
-          } else {
-            // Check if user should be admin but isn't yet
-            const userData = userSnap.data();
-            const shouldBeAdmin = 
-              firebaseUser.email === "munshidipa62@gmail.com" || 
-              firebaseUser.email === "munshidipa@gmail.com" || 
-              firebaseUser.email === "dibakar61601@gmail.com" ||
-              firebaseUser.phoneNumber === "+919475954278";
-            
-            if (shouldBeAdmin && userData.role !== 'admin') {
+        if (!userSnap || !userSnap.exists()) {
+          console.log('Creating/Repairing user document...');
+          const newUser: any = {
+            uid: firebaseUser.uid,
+            credits: isAdminEmail ? 999999 : 10,
+            role: isAdminEmail ? 'admin' : 'user',
+            createdAt: new Date().toISOString(),
+            name: firebaseUser.displayName || 'User',
+            email: firebaseUser.email || ''
+          };
+          
+          if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
+          
+          try {
+            await setDoc(userRef, newUser, { merge: true });
+            console.log('User document created/updated successfully.');
+            // Update global stats
+            await setDoc(doc(db, 'stats', 'global'), { 
+              totalUsers: increment(1) 
+            }, { merge: true }).catch(e => console.error('Stats update error:', e));
+          } catch (setErr: any) {
+            console.error('Failed to create/update user document:', setErr.message);
+            // If we can't even create the document, we might have a major rules issue
+          }
+        } else {
+          // Check if user should be admin but isn't yet
+          const userData = userSnap.data();
+          console.log('Existing user data:', userData.role, 'isAdminEmail:', isAdminEmail);
+          if (isAdminEmail && userData.role !== 'admin') {
+            console.log('User should be admin, updating role for:', firebaseUser.email);
+            try {
               await updateDoc(userRef, { role: 'admin', credits: 999999 });
+              console.log('Admin role update successful for:', firebaseUser.email);
+              toast.success('Admin access granted!');
+            } catch (updateErr: any) {
+              console.error('Failed to update admin role:', updateErr.message);
             }
           }
         }
@@ -188,20 +194,22 @@ export default function App() {
         // Real-time listener for credits and role
         userUnsubscribe = onSnapshot(userRef, (doc) => {
           if (doc.exists()) {
-            console.log('User profile updated from Firestore');
+            console.log('User profile updated from Firestore:', doc.data().role);
             const userData = doc.data() as UserProfile;
             setUser(userData);
             setIsAuthReady(true);
             setLoading(false);
           } else {
-            // The creation logic above should have triggered, but we wait
-            console.warn('User profile document does not exist yet');
-            // We don't call setLoading(false) here yet, let the creation finish
-            // or wait for the next snapshot
+            console.warn('User profile document does not exist yet in snapshot');
+            // If it doesn't exist, we'll keep the provisional user but set auth ready
+            // so they can at least see the UI (though they might have 0 credits)
+            setIsAuthReady(true);
+            setLoading(false);
           }
         }, (err) => {
           console.error('Firestore snapshot error:', err);
-          setError(`Firestore Error: ${err.message}`);
+          // If snapshot fails, we still need to stop loading
+          setIsAuthReady(true);
           setLoading(false);
         });
       } catch (err: any) {
@@ -243,10 +251,23 @@ export default function App() {
   const handleLogout = () => signOut(auth);
 
   const handleSearch = async (queryText: string) => {
-    if (!user || (user.credits <= 0 && user.role !== 'admin')) return;
+    console.log('handleSearch called with:', queryText);
+    if (!user) {
+      console.warn('handleSearch: No user found');
+      return;
+    }
+    
+    if (user.credits <= 0 && user.role !== 'admin') {
+      console.warn('handleSearch: Not enough credits and not admin');
+      toast.error('You have run out of credits. Please upgrade to continue.');
+      setIsPaywallOpen(true);
+      return;
+    }
 
     setIsSearching(true);
     let chatId = currentChatId;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
     try {
       // 1. Create new chat if none selected
@@ -297,8 +318,11 @@ export default function App() {
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryText, history: history.slice(-5) })
+        body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       let data;
       const contentType = response.headers.get("content-type");
@@ -327,19 +351,37 @@ export default function App() {
         }).catch(e => console.error('Title generation error:', e));
       }
 
-      // 7. Deduct credit if not admin
-      if (user && user.uid && user.role !== 'admin') {
+      // 7. Deduct credit and update stats if not admin
+      if (user && user.uid) {
         try {
-          await updateDoc(doc(db, 'users', user.uid), {
-            credits: increment(-1)
-          });
-        } catch (creditErr) {
-          console.error('Failed to deduct credits:', creditErr);
+          const today = new Date().toISOString().split('T')[0];
+          const dailyStatsRef = doc(db, 'stats', `daily_${today}`);
+          const globalStatsRef = doc(db, 'stats', 'global');
+          
+          const statsUpdate = {
+            totalRequests: increment(1),
+            llamaTokens: increment(data.usage?.total_tokens || 0),
+            serperRequests: increment(data.sources?.length > 0 ? 1 : 0)
+          };
+
+          const userUpdate: any = {};
+          if (user.role !== 'admin') {
+            userUpdate.credits = increment(-1);
+          }
+
+          await Promise.all([
+            setDoc(dailyStatsRef, statsUpdate, { merge: true }),
+            setDoc(globalStatsRef, statsUpdate, { merge: true }),
+            Object.keys(userUpdate).length > 0 ? updateDoc(doc(db, 'users', user.uid), userUpdate) : Promise.resolve()
+          ]);
+        } catch (updateErr) {
+          console.error('Failed to update credits/stats:', updateErr);
         }
       }
 
     } catch (error: any) {
       console.error('Search Error:', error);
+      toast.error(`Search failed: ${error.message || 'Something went wrong'}`);
       // If we have a message reference, update it with the error
       if (chatId) {
         try {

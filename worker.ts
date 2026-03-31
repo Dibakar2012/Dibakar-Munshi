@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import Groq from "groq-sdk";
 
-const app = new Hono();
+type Bindings = {
+  GROQ_API_KEY: string;
+  SERPER_API_KEY: string;
+}
+
+const app = new Hono<{ Bindings: Bindings }>();
 
 // CORS for Cloudflare
 app.use('/api/*', cors({

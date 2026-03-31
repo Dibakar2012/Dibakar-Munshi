@@ -17,8 +17,9 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email in ["munshidipa62@gmail.com", "munshidipa@gmail.com", "dibakar61601@gmail.com"] ||
-        request.auth.token.phone_number == "+919475954278"
+        request.auth.token.email.lower() in ["munshidipa62@gmail.com", "munshidipa@gmail.com", "dibakar61601@gmail.com"] ||
+        request.auth.token.phone_number == "+919475954278" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -68,6 +69,13 @@ service cloud.firestore {
     match /feedbacks/{feedbackId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // Premium Requests
+    match /premium_requests/{requestId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
     
     // Global Admin Access
