@@ -528,24 +528,32 @@ ${context}`
       
       // Keep-alive mechanism for Render free plan
       // This pings the server every 5 minutes to prevent it from sleeping
-      const APP_URL = process.env.APP_URL || `http://localhost:${portNumber}`;
+      const rawAppUrl = process.env.APP_URL || `http://localhost:${portNumber}`;
+      const APP_URL = rawAppUrl.trim();
       console.log(`[Keep-Alive] Initialized for: ${APP_URL}`);
       
-      setInterval(async () => {
+      const performPing = async () => {
         try {
           const pingUrl = `${APP_URL.endsWith('/') ? APP_URL.slice(0, -1) : APP_URL}/api/ping`;
           await axios.get(pingUrl);
-          console.log(`[Keep-Alive] Ping successful at ${new Date().toLocaleTimeString()}`);
+          console.log(`[Keep-Alive] Ping successful at ${new Date().toLocaleTimeString()} to ${pingUrl}`);
         } catch (error: any) {
           // If it fails, try localhost as fallback
           try {
-            await axios.get(`http://localhost:${portNumber}/api/ping`);
-            console.log(`[Keep-Alive] Localhost fallback ping successful`);
+            const localPingUrl = `http://localhost:${portNumber}/api/ping`;
+            await axios.get(localPingUrl);
+            console.log(`[Keep-Alive] Localhost fallback ping successful to ${localPingUrl}`);
           } catch (localErr: any) {
-            console.error(`[Keep-Alive] All pings failed:`, localErr.message);
+            console.error(`[Keep-Alive] All pings failed. Error:`, localErr.message);
           }
         }
-      }, 5 * 60 * 1000); // 5 minutes
+      };
+
+      // Initial ping on startup
+      performPing();
+      
+      // Periodic ping every 5 minutes
+      setInterval(performPing, 5 * 60 * 1000);
     });
   } catch (error) {
     console.error("Failed to start server:", error);
