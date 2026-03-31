@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import Groq from "groq-sdk";
-import axios from "axios";
 
 const app = new Hono();
 
@@ -52,14 +51,18 @@ app.post('/api/search', async (c) => {
   const groq = new Groq({ apiKey: GROQ_API_KEY });
 
   try {
-    // 1. Serper Search
-    const serperRes = await axios.post(
-      "https://google.serper.dev/search",
-      { q: query, num: 3 },
-      { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" } }
-    );
+    // 1. Serper Search using native fetch
+    const serperRes = await fetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": SERPER_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ q: query, num: 3 })
+    });
 
-    const sources = serperRes.data.organic || [];
+    const serperData: any = await serperRes.json();
+    const sources = serperData.organic || [];
     let context = sources.map((s: any) => `Title: ${s.title}\nContent: ${s.snippet}`).join("\n\n");
 
     // 2. Groq Completion
@@ -84,11 +87,7 @@ app.post('/api/search', async (c) => {
 // Premium Request API (Placeholder for Email)
 app.post('/api/premium-request', async (c) => {
   const { email, name, message } = await c.req.json();
-  
-  // Note: Cloudflare Workers don't support direct SMTP (nodemailer).
-  // You should use a service like Resend or SendGrid via HTTP API.
   console.log(`Premium request from ${name} (${email}): ${message}`);
-  
   return c.json({ success: true, message: "Request received! We will contact you soon." });
 });
 
