@@ -48,7 +48,7 @@ export default function PremiumRequestModal({ isOpen, onClose, userEmail }: Prem
     setIsSubmitting(true);
     try {
       // Construct WhatsApp message
-      const adminNumber = '919242959903';
+      const adminNumber = '919475954278';
       const message = `*New Premium Request* 🚀\n\n` +
         `*Name:* ${formData.name}\n` +
         `*Email:* ${formData.email}\n` +

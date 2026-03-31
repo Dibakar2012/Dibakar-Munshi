@@ -112,7 +112,7 @@ export default function App() {
             const isAdmin = 
               firebaseUser.email === "munshidipa62@gmail.com" || 
               firebaseUser.email === "dibakar61601@gmail.com" ||
-              firebaseUser.phoneNumber === "+919242959903";
+              firebaseUser.phoneNumber === "+919475954278";
 
             const newUser: any = {
               uid: firebaseUser.uid,
@@ -132,7 +132,7 @@ export default function App() {
             const shouldBeAdmin = 
               firebaseUser.email === "munshidipa62@gmail.com" || 
               firebaseUser.email === "dibakar61601@gmail.com" ||
-              firebaseUser.phoneNumber === "+919242959903";
+              firebaseUser.phoneNumber === "+919475954278";
             
             if (shouldBeAdmin && userData.role !== 'admin') {
               await updateDoc(userRef, { role: 'admin', credits: 999999 });
@@ -504,7 +504,7 @@ export default function App() {
                         <button
                           onClick={() => { 
                             setIsMoreMenuOpen(false); 
-                            window.location.href = 'tel:9242959903';
+                            window.location.href = 'tel:9475954278';
                           }}
                           className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-hover rounded-xl transition-colors"
                         >

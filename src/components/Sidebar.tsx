@@ -230,7 +230,7 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
 
         <div className="p-fluid border-t border-border bg-surface/50 space-y-2">
           <button
-            onClick={() => window.location.href = 'tel:9242959903'}
+            onClick={() => window.location.href = 'tel:9475954278'}
             className="w-full flex items-center justify-center gap-2 bg-surface-hover hover:bg-border text-text-muted rounded-xl p-3 font-bold transition-all text-sm"
           >
             <Plus size={18} className="rotate-45" />
