@@ -11,10 +11,10 @@ import AdminDashboard from './components/AdminDashboard';
 import Paywall from './components/Paywall';
 import PermissionPopup from './components/PermissionPopup';
 import FeedbackModal from './components/FeedbackModal';
-import { LogIn, LogOut, CreditCard, User, ShieldCheck, ShieldAlert, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
+import { LogIn, LogOut, CreditCard, User, ShieldCheck, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-import { toast, Toaster } from 'sonner';
+import { Toaster } from 'sonner';
 
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -65,7 +65,6 @@ export default function App() {
   const toggleTheme = () => {
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
-    console.log('Theme toggled. New mode is dark:', newMode);
     if (newMode) {
       document.documentElement.classList.remove('light');
       localStorage.setItem('theme', 'dark');
@@ -76,17 +75,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Safety timeout for loading state
-    const loadingTimeout = setTimeout(() => {
-      setLoading(prev => {
-        if (prev) {
-          console.warn('Loading safety timeout reached');
-          return false;
-        }
-        return prev;
-      });
-    }, 15000); // 15 seconds
-
     async function testConnection() {
       try {
         await getDocFromServer(doc(db, 'test', 'connection'));
@@ -94,8 +82,7 @@ export default function App() {
       } catch (err: any) {
         console.warn('Firestore connection test failed:', err.message);
         if (err.message?.includes('the client is offline')) {
-          console.warn('Firestore is offline. Proceeding with cached data if available.');
-          // Don't set a blocking error for offline state
+          setError('Firestore is offline. Please check your Firebase configuration or internet connection.');
         } else if (err.message?.includes('PERMISSION_DENIED')) {
           console.warn('Permission denied for connection test. This is often normal if rules are strictly locked down.');
         }
@@ -107,120 +94,77 @@ export default function App() {
 
     console.log('Auth state listener initialized');
     const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser ? `User logged in: ${firebaseUser.email || firebaseUser.uid}` : 'No user (logged out)');
+      console.log('Auth state changed:', firebaseUser ? 'User logged in' : 'No user');
       
-      if (!firebaseUser) {
-        console.log('Clearing user state...');
-        setUser(null);
-        setIsAuthReady(false);
-        setLoading(false);
-        return;
-      }
-
       // Clean up previous user listener
       if (userUnsubscribe) {
         userUnsubscribe();
         userUnsubscribe = null;
       }
 
-      // Set provisional user to prevent login loop while fetching profile
-      console.log('Setting provisional user state...');
-      setUser({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        name: firebaseUser.displayName || 'User',
-        role: 'user',
-        credits: 0,
-        createdAt: new Date().toISOString()
-      } as UserProfile);
-
-      try {
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        let userSnap;
+      if (firebaseUser) {
         try {
-          userSnap = await getDoc(userRef);
-          console.log('User document exists:', userSnap.exists());
-        } catch (err: any) {
-          console.warn('Initial user profile fetch failed:', err.message);
-          // If it's a permission error, we'll still try to proceed
-        }
+          const userRef = doc(db, 'users', firebaseUser.uid);
+          const userSnap = await getDoc(userRef);
 
-        const isAdminEmail = 
-          firebaseUser.email?.toLowerCase() === "munshidipa62@gmail.com" || 
-          firebaseUser.email?.toLowerCase() === "munshidipa@gmail.com" || 
-          firebaseUser.email?.toLowerCase() === "dibakar61601@gmail.com" ||
-          firebaseUser.phoneNumber === "+919475954278";
+          if (!userSnap.exists()) {
+            console.log('Creating new user document...');
+            const isAdmin = 
+              firebaseUser.email === "munshidipa62@gmail.com" || 
+              firebaseUser.email === "dibakar61601@gmail.com" ||
+              firebaseUser.phoneNumber === "+919475954278";
 
-        if (!userSnap || !userSnap.exists()) {
-          console.log('Creating/Repairing user document...');
-          const newUser: any = {
-            uid: firebaseUser.uid,
-            credits: isAdminEmail ? 999999 : 10,
-            role: isAdminEmail ? 'admin' : 'user',
-            createdAt: new Date().toISOString(),
-            name: firebaseUser.displayName || 'User',
-            email: firebaseUser.email || ''
-          };
-          
-          if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
-          
-          try {
-            await setDoc(userRef, newUser, { merge: true });
-            console.log('User document created/updated successfully.');
-            // Update global stats
-            await setDoc(doc(db, 'stats', 'global'), { 
-              totalUsers: increment(1) 
-            }, { merge: true }).catch(e => console.error('Stats update error:', e));
-          } catch (setErr: any) {
-            console.error('Failed to create/update user document:', setErr.message);
-            // If we can't even create the document, we might have a major rules issue
-          }
-        } else {
-          // Check if user should be admin but isn't yet
-          const userData = userSnap.data();
-          console.log('Existing user data:', userData.role, 'isAdminEmail:', isAdminEmail);
-          if (isAdminEmail && userData.role !== 'admin') {
-            console.log('User should be admin, updating role for:', firebaseUser.email);
-            try {
+            const newUser: any = {
+              uid: firebaseUser.uid,
+              credits: isAdmin ? 999999 : 10,
+              role: isAdmin ? 'admin' : 'user',
+              createdAt: new Date().toISOString()
+            };
+            
+            if (firebaseUser.email) newUser.email = firebaseUser.email;
+            if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
+            
+            await setDoc(userRef, newUser);
+            console.log('New user document created.');
+          } else {
+            // Check if user should be admin but isn't yet
+            const userData = userSnap.data();
+            const shouldBeAdmin = 
+              firebaseUser.email === "munshidipa62@gmail.com" || 
+              firebaseUser.email === "dibakar61601@gmail.com" ||
+              firebaseUser.phoneNumber === "+919475954278";
+            
+            if (shouldBeAdmin && userData.role !== 'admin') {
               await updateDoc(userRef, { role: 'admin', credits: 999999 });
-              console.log('Admin role update successful for:', firebaseUser.email);
-              toast.success('Admin access granted!');
-            } catch (updateErr: any) {
-              console.error('Failed to update admin role:', updateErr.message);
             }
           }
-        }
 
-        // Real-time listener for credits and role
-        userUnsubscribe = onSnapshot(userRef, (doc) => {
-          if (doc.exists()) {
-            console.log('User profile updated from Firestore:', doc.data().role);
-            const userData = doc.data() as UserProfile;
-            setUser(userData);
-            setIsAuthReady(true);
+          // Real-time listener for credits and role
+          userUnsubscribe = onSnapshot(userRef, (doc) => {
+            if (doc.exists()) {
+              console.log('User profile updated from Firestore');
+              setUser(doc.data() as UserProfile);
+              setIsAuthReady(true);
+              setLoading(false);
+            }
+          }, (err) => {
+            console.error('Firestore snapshot error:', err);
+            setError(`Firestore Error: ${err.message}`);
             setLoading(false);
-          } else {
-            console.warn('User profile document does not exist yet in snapshot');
-            // If it doesn't exist, we'll keep the provisional user but set auth ready
-            // so they can at least see the UI (though they might have 0 credits)
-            setIsAuthReady(true);
-            setLoading(false);
-          }
-        }, (err) => {
-          console.error('Firestore snapshot error:', err);
-          // If snapshot fails, we still need to stop loading
-          setIsAuthReady(true);
+          });
+        } catch (err: any) {
+          console.error('Error in auth state change handler:', err);
+          setError(`Auth Handler Error: ${err.message}`);
           setLoading(false);
-        });
-      } catch (err: any) {
-        console.error('Error in auth state change handler:', err);
-        setError(`Auth Handler Error: ${err.message}`);
+        }
+      } else {
+        setUser(null);
+        setIsAuthReady(false);
         setLoading(false);
       }
     });
 
     return () => {
-      clearTimeout(loadingTimeout);
       authUnsubscribe();
       if (userUnsubscribe) userUnsubscribe();
     };
@@ -231,12 +175,9 @@ export default function App() {
   const handleLogin = async () => {
     console.log('Attempting login with Google...');
     setLoading(true);
-    setError(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('Login successful:', result.user.email);
-      // We don't set loading to false here. 
-      // The onAuthStateChanged listener will handle it once the profile is ready.
     } catch (error: any) {
       console.error('Login Error:', error.code, error.message);
       if (error.code === 'auth/unauthorized-domain') {
@@ -244,6 +185,7 @@ export default function App() {
       } else {
         setError(`Login failed: ${error.message}`);
       }
+    } finally {
       setLoading(false);
     }
   };
@@ -251,23 +193,10 @@ export default function App() {
   const handleLogout = () => signOut(auth);
 
   const handleSearch = async (queryText: string) => {
-    console.log('handleSearch called with:', queryText);
-    if (!user) {
-      console.warn('handleSearch: No user found');
-      return;
-    }
-    
-    if (user.credits <= 0 && user.role !== 'admin') {
-      console.warn('handleSearch: Not enough credits and not admin');
-      toast.error('You have run out of credits. Please upgrade to continue.');
-      setIsPaywallOpen(true);
-      return;
-    }
+    if (!user || (user.credits <= 0 && user.role !== 'admin')) return;
 
     setIsSearching(true);
     let chatId = currentChatId;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
     try {
       // 1. Create new chat if none selected
@@ -318,11 +247,8 @@ export default function App() {
       const response = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
-        signal: controller.signal
+        body: JSON.stringify({ query: queryText, history: history.slice(-5) })
       });
-
-      clearTimeout(timeoutId);
 
       let data;
       const contentType = response.headers.get("content-type");
@@ -351,37 +277,19 @@ export default function App() {
         }).catch(e => console.error('Title generation error:', e));
       }
 
-      // 7. Deduct credit and update stats if not admin
-      if (user && user.uid) {
+      // 7. Deduct credit if not admin
+      if (user && user.uid && user.role !== 'admin') {
         try {
-          const today = new Date().toISOString().split('T')[0];
-          const dailyStatsRef = doc(db, 'stats', `daily_${today}`);
-          const globalStatsRef = doc(db, 'stats', 'global');
-          
-          const statsUpdate = {
-            totalRequests: increment(1),
-            llamaTokens: increment(data.usage?.total_tokens || 0),
-            serperRequests: increment(data.sources?.length > 0 ? 1 : 0)
-          };
-
-          const userUpdate: any = {};
-          if (user.role !== 'admin') {
-            userUpdate.credits = increment(-1);
-          }
-
-          await Promise.all([
-            setDoc(dailyStatsRef, statsUpdate, { merge: true }),
-            setDoc(globalStatsRef, statsUpdate, { merge: true }),
-            Object.keys(userUpdate).length > 0 ? updateDoc(doc(db, 'users', user.uid), userUpdate) : Promise.resolve()
-          ]);
-        } catch (updateErr) {
-          console.error('Failed to update credits/stats:', updateErr);
+          await updateDoc(doc(db, 'users', user.uid), {
+            credits: increment(-1)
+          });
+        } catch (creditErr) {
+          console.error('Failed to deduct credits:', creditErr);
         }
       }
 
     } catch (error: any) {
       console.error('Search Error:', error);
-      toast.error(`Search failed: ${error.message || 'Something went wrong'}`);
       // If we have a message reference, update it with the error
       if (chatId) {
         try {
@@ -406,36 +314,11 @@ export default function App() {
     }
   };
 
-  if (loading && !error) {
+  if (loading) {
     return (
       <div className="h-[100dvh] bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         <p className="text-primary font-medium animate-pulse">Loading Dibakar AI...</p>
-      </div>
-    );
-  }
-
-  if (error && !user) {
-    return (
-      <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-4 text-center overflow-hidden relative">
-        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px] animate-pulse" />
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-sm w-full auth-card p-8 rounded-[3rem] space-y-6 relative z-10 border border-white/10 shadow-2xl"
-        >
-          <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-500/20">
-            <ShieldAlert className="text-red-500" size={32} />
-          </div>
-          <h1 className="text-2xl font-black tracking-tighter text-white">CONNECTION ERROR</h1>
-          <p className="text-text-muted text-sm font-medium">{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full bg-white text-black py-4 rounded-2xl font-black text-lg hover:bg-white/90 transition-all shadow-xl"
-          >
-            RETRY CONNECTION
-          </button>
-        </motion.div>
       </div>
     );
   }
@@ -517,7 +400,7 @@ export default function App() {
     );
   }
 
-  const showPaywall = isAuthReady && ((user.credits <= 0 && user.role !== 'admin') || isPaywallOpen);
+  const showPaywall = (user.credits <= 0 && user.role !== 'admin') || isPaywallOpen;
 
   return (
     <div className="h-[100dvh] min-h-[calc(var(--vh,1vh)*100)] bg-background flex flex-col overflow-hidden">

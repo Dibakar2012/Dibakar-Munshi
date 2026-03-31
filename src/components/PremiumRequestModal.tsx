@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, User, Phone, MapPin, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { db, auth } from '../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
 
 interface PremiumRequestModalProps {
   isOpen: boolean;
@@ -47,27 +45,9 @@ export default function PremiumRequestModal({ isOpen, onClose, userEmail }: Prem
   };
 
   const handleSubmit = async () => {
-    if (!auth.currentUser) {
-      toast.error('You must be logged in');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      // 1. Create document in Firestore
-      await addDoc(collection(db, 'premium_requests'), {
-        userId: auth.currentUser.uid,
-        email: formData.email,
-        name: formData.name,
-        phone: formData.phone,
-        plan: formData.plan,
-        couponCode: formData.couponCode,
-        finalPrice: discountedPrice,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      });
-
-      // 2. Construct WhatsApp message
+      // Construct WhatsApp message
       const adminNumber = '919475954278';
       const message = `*New Premium Request* 🚀\n\n` +
         `*Name:* ${formData.name}\n` +

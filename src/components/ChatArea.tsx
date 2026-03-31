@@ -12,10 +12,8 @@ const INITIAL_LIMIT = 20;
 function cleanMessageContent(content: string) {
   // Remove common source/reference headers and everything after them
   // Also remove bracketed citations like [1], [2]
-  // Also remove common source patterns like "Wikipedia - https://..." at the end
   return content
-    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|Source Links):[\s\S]*$/i, '')
-    .replace(/(?:\n|^)(?:Wikipedia|Quora|Facebook|Twitter|LinkedIn|YouTube) - https?:\/\/[\w\d.\/-]+[\s\S]*$/i, '')
+    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations):[\s\S]*$/i, '')
     .replace(/\[\d+\]/g, '')
     .trim();
 }
@@ -310,18 +308,22 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
             className="w-full"
           >
             <div className={cn(
-              "flex gap-2 md:gap-6 max-w-3xl mx-auto w-full",
+              "flex gap-3 md:gap-6 max-w-2xl mx-auto w-full",
               msg.role === 'user' ? "justify-end" : "justify-start"
             )}>
               {msg.role === 'assistant' && (
                 <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1 shadow-sm border border-primary/5">
-                  <Bot className="text-primary w-3 h-3 md:w-4.5 md:h-4.5" />
+                  <Bot className="text-primary w-3.5 h-3.5 md:w-4.5 md:h-4.5" />
                 </div>
               )}
               <div className={cn(
-                "flex flex-col gap-1 md:gap-4 group min-w-0",
-                msg.role === 'user' ? "items-end max-w-[90%] sm:max-w-[85%] ml-auto" : "items-start flex-1"
+                "flex flex-col gap-2 md:gap-4 group",
+                msg.role === 'user' ? "items-end max-w-[85%] ml-auto" : "items-start flex-1"
               )}>
+                {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                  <SourcesToggle sources={msg.sources} />
+                )}
+                
                 <div className={cn(
                   "relative",
                   msg.role === 'user' 
@@ -336,11 +338,6 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
                       {msg.role === 'assistant' ? cleanMessageContent(msg.content) : msg.content}
                     </ReactMarkdown>
                   </div>
-                  {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-4">
-                      <SourcesToggle sources={msg.sources} />
-                    </div>
-                  )}
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-2 mt-4 md:mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
                       <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} />

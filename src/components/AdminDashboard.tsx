@@ -81,23 +81,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
   const updateRequestStatus = async (requestId: string, status: 'completed' | 'rejected') => {
     try {
-      const request = premiumRequests.find(req => req.id === requestId);
-      if (!request) return;
-
       await updateDoc(doc(db, 'premium_requests', requestId), { status });
-
-      if (status === 'completed') {
-        const creditsToAdd = request.plan.includes('35') ? 70 : request.plan.includes('99') ? 300 : 0;
-        if (creditsToAdd > 0) {
-          await updateDoc(doc(db, 'users', request.userId), {
-            credits: increment(creditsToAdd),
-            planType: request.plan.includes('35') ? 'starter' : 'pro',
-            planExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
-          });
-          toast.success(`Injected ${creditsToAdd} credits to user.`);
-        }
-      }
-
       setPremiumRequests(prev => prev.map(req => req.id === requestId ? { ...req, status } : req));
       toast.success(`Request marked as ${status}`);
     } catch (error) {
