@@ -17,7 +17,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email in ["munshidipa62@gmail.com", "dibakar61601@gmail.com"] ||
+        request.auth.token.email in ["munshidipa62@gmail.com", "munshidipa@gmail.com", "dibakar61601@gmail.com"] ||
         request.auth.token.phone_number == "+919475954278"
       );
     }

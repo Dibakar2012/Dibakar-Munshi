@@ -154,6 +154,7 @@ export default function App() {
             console.log('Creating new user document...');
             const isAdmin = 
               firebaseUser.email === "munshidipa62@gmail.com" || 
+              firebaseUser.email === "munshidipa@gmail.com" || 
               firebaseUser.email === "dibakar61601@gmail.com" ||
               firebaseUser.phoneNumber === "+919475954278";
 
@@ -174,6 +175,7 @@ export default function App() {
             const userData = userSnap.data();
             const shouldBeAdmin = 
               firebaseUser.email === "munshidipa62@gmail.com" || 
+              firebaseUser.email === "munshidipa@gmail.com" || 
               firebaseUser.email === "dibakar61601@gmail.com" ||
               firebaseUser.phoneNumber === "+919475954278";
             
