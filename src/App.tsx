@@ -105,37 +105,51 @@ export default function App() {
       if (firebaseUser) {
         try {
           const userRef = doc(db, 'users', firebaseUser.uid);
-          const userSnap = await getDoc(userRef);
+          let userSnap;
+          try {
+            userSnap = await getDoc(userRef);
+          } catch (err: any) {
+            console.warn('Initial user profile fetch failed:', err.message);
+            if (err.message?.includes('the client is offline')) {
+              // If offline, we might still have data in cache or we'll get it via onSnapshot
+              // We'll proceed and let onSnapshot handle the real-time updates
+              console.log('Proceeding in offline mode...');
+            } else {
+              throw err; // Re-throw other errors
+            }
+          }
 
-          if (!userSnap.exists()) {
-            console.log('Creating new user document...');
-            const isAdmin = 
-              firebaseUser.email === "munshidipa62@gmail.com" || 
-              firebaseUser.email === "dibakar61601@gmail.com" ||
-              firebaseUser.phoneNumber === "+919475954278";
+          if (userSnap) {
+            if (!userSnap.exists()) {
+              console.log('Creating new user document...');
+              const isAdmin = 
+                firebaseUser.email === "munshidipa62@gmail.com" || 
+                firebaseUser.email === "dibakar61601@gmail.com" ||
+                firebaseUser.phoneNumber === "+919475954278";
 
-            const newUser: any = {
-              uid: firebaseUser.uid,
-              credits: isAdmin ? 999999 : 10,
-              role: isAdmin ? 'admin' : 'user',
-              createdAt: new Date().toISOString()
-            };
-            
-            if (firebaseUser.email) newUser.email = firebaseUser.email;
-            if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
-            
-            await setDoc(userRef, newUser);
-            console.log('New user document created.');
-          } else {
-            // Check if user should be admin but isn't yet
-            const userData = userSnap.data();
-            const shouldBeAdmin = 
-              firebaseUser.email === "munshidipa62@gmail.com" || 
-              firebaseUser.email === "dibakar61601@gmail.com" ||
-              firebaseUser.phoneNumber === "+919475954278";
-            
-            if (shouldBeAdmin && userData.role !== 'admin') {
-              await updateDoc(userRef, { role: 'admin', credits: 999999 });
+              const newUser: any = {
+                uid: firebaseUser.uid,
+                credits: isAdmin ? 999999 : 10,
+                role: isAdmin ? 'admin' : 'user',
+                createdAt: new Date().toISOString()
+              };
+              
+              if (firebaseUser.email) newUser.email = firebaseUser.email;
+              if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
+              
+              await setDoc(userRef, newUser);
+              console.log('New user document created.');
+            } else {
+              // Check if user should be admin but isn't yet
+              const userData = userSnap.data();
+              const shouldBeAdmin = 
+                firebaseUser.email === "munshidipa62@gmail.com" || 
+                firebaseUser.email === "dibakar61601@gmail.com" ||
+                firebaseUser.phoneNumber === "+919475954278";
+              
+              if (shouldBeAdmin && userData.role !== 'admin') {
+                await updateDoc(userRef, { role: 'admin', credits: 999999 });
+              }
             }
           }
 

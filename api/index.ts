@@ -130,7 +130,7 @@ app.post("/api/search", async (req, res) => {
       } catch (serperErr) {}
     }
 
-    const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. Put the source links at the end if context was used.\n\nContext:\n${context || "No web context needed for this query."}`;
+    const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. DO NOT include source links or a 'Sources' section at the end of your answer, as they will be displayed separately in the UI.\n\nContext:\n${context || "No web context needed for this query."}`;
 
     const chatCompletion = await groq.chat.completions.create({
       messages: [{ role: "system", content: systemInstruction }, ...history.map((h: any) => ({ role: h.role, content: h.content })), { role: "user", content: query }],
