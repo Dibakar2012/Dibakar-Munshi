@@ -9,3 +9,4 @@ NODE_ENV = "production"
 
 [site]
 bucket = "./dist"
+pages_bulid_output_dir="./dist
