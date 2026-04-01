@@ -1,0 +1,8 @@
+name = "dibakar-ai"
+compatibility_date = "2024-03-01"
+compatibility_flags = [ "nodejs_compat" ]
+pages_build_output_dir = "./dist"
+
+[vars]
+NODE_ENV = "production"
+# Add your other API keys here in the Cloudflare Dashboard, not here.

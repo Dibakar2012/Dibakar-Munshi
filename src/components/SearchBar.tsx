@@ -152,7 +152,7 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
         }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
         className={cn(
-          "w-full max-w-2xl mx-auto backdrop-blur-2xl rounded-2xl md:rounded-3xl p-2 md:p-3 flex items-end gap-2 md:gap-3 transition-all relative overflow-hidden border border-white/10",
+          "w-full max-w-3xl mx-auto backdrop-blur-2xl rounded-2xl md:rounded-3xl p-2 md:p-3 flex items-end gap-2 md:gap-3 transition-all relative overflow-hidden border border-white/10",
           disabled && "opacity-50 cursor-not-allowed"
         )}
       >
@@ -187,10 +187,10 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder="Ask Dibakar AI"
+          placeholder="Search everything with Dibakar AI..."
           disabled={disabled}
           autoFocus
-          className="flex-1 bg-transparent border-none outline-none py-3 px-2 md:px-0 resize-none text-fluid-base md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
+          className="flex-1 bg-transparent border-none outline-none py-3 px-2 md:px-0 resize-none text-fluid-lg md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
         />
 
         <div className="flex items-center gap-1.5 md:gap-2 pr-1 pb-1 relative z-10">

@@ -266,7 +266,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
 
   if (!chatId) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-fluid">
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-fluid max-w-3xl mx-auto">
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -308,7 +308,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
             className="w-full"
           >
             <div className={cn(
-              "flex gap-3 md:gap-6 max-w-2xl mx-auto w-full",
+              "flex gap-3 md:gap-6 max-w-3xl mx-auto w-full",
               msg.role === 'user' ? "justify-end" : "justify-start"
             )}>
               {msg.role === 'assistant' && (
