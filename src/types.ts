@@ -9,6 +9,8 @@ export interface UserProfile {
   planExpiry?: string;
   planType?: '35' | '99';
   createdAt?: string;
+  isVirtual?: boolean;
+  warning?: string;
 }
 
 export interface Chat {

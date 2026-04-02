@@ -135,7 +135,9 @@ export default function App() {
           email: doc.email || firebaseUser.email || '',
           role: doc.role || 'user',
           credits: doc.credits !== undefined ? doc.credits : 10,
-          createdAt: doc.createdAt || new Date().toISOString()
+          createdAt: doc.createdAt || new Date().toISOString(),
+          isVirtual: doc.isVirtual,
+          warning: doc.warning
         } as UserProfile;
 
         if (doc.isVirtual) {
@@ -233,18 +235,24 @@ export default function App() {
     try {
       // 1. Create new chat if none selected
       if (!chatId) {
-        const res = await fetch('/api/chats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: user.uid,
-            title: queryText.slice(0, 40) + (queryText.length > 40 ? '...' : '')
-          })
-        });
-        const chatDoc = await res.json();
-        chatId = chatDoc.$id;
-        setCurrentChatId(chatId);
-      } else {
+        if (user && !user.isVirtual) {
+          const res = await fetch('/api/chats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.uid,
+              title: queryText.slice(0, 40) + (queryText.length > 40 ? '...' : '')
+            })
+          });
+          const chatDoc = await res.json();
+          chatId = chatDoc.$id;
+          setCurrentChatId(chatId);
+        } else {
+          // Virtual mode: use a temporary ID
+          chatId = 'virtual_' + Date.now();
+          setCurrentChatId(chatId);
+        }
+      } else if (user && !user.isVirtual) {
         // Update existing chat's updatedAt (don't await, it's not critical for search)
         fetch(`/api/chats/${chatId}`, {
           method: 'PATCH',
@@ -254,50 +262,60 @@ export default function App() {
       }
 
       // 2. Add user message and get history in parallel
-      const [userMsgRes, historyRes] = await Promise.all([
-        fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chatId,
-            role: 'user',
-            content: queryText
-          })
-        }),
-        fetch(`/api/messages?chatId=${chatId}`)
-      ]);
+      let history = [];
+      if (user && !user.isVirtual) {
+        const [userMsgRes, historyRes] = await Promise.all([
+          fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId,
+              role: 'user',
+              content: queryText
+            })
+          }),
+          fetch(`/api/messages?chatId=${chatId}`)
+        ]);
 
-      const historyDocs = await historyRes.json();
-      const history = historyDocs
-        .slice(-6)
-        .map((doc: any) => ({ role: doc.role, content: doc.content }))
-        .filter((m: any) => m.content !== 'Thinking...');
+        const historyDocs = await historyRes.json();
+        history = historyDocs
+          .slice(-6)
+          .map((doc: any) => ({ role: doc.role, content: doc.content }))
+          .filter((m: any) => m.content !== 'Thinking...');
+      }
 
       // 3. Create assistant message placeholder and start search in parallel
-      const [assistantMsgRes, searchRes] = await Promise.all([
-        fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chatId,
-            role: 'assistant',
-            content: 'Thinking...',
-            sources: JSON.stringify([])
-          })
-        }),
-        fetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
-          signal: controller.signal
-        })
-      ]);
+      let assistantMsgDoc = null;
+      const searchPromise = fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
+        signal: controller.signal
+      });
 
-      const assistantMsgDoc = await assistantMsgRes.json();
-      const response = searchRes;
+      if (user && !user.isVirtual) {
+        const [assistantMsgRes, searchRes] = await Promise.all([
+          fetch('/api/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chatId,
+              role: 'assistant',
+              content: 'Thinking...',
+              sources: JSON.stringify([])
+            })
+          }),
+          searchPromise
+        ]);
+        assistantMsgDoc = await assistantMsgRes.json();
+        var searchResponse = searchRes;
+      } else {
+        var searchResponse = await searchPromise;
+      }
 
       clearTimeout(timeoutId);
 
+      const response = searchResponse;
       let data;
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.indexOf("application/json") !== -1) {
@@ -309,7 +327,7 @@ export default function App() {
 
       if (!response.ok) throw new Error(data.error || 'Search failed');
 
-      if (assistantMsgDoc) {
+      if (assistantMsgDoc && user && !user.isVirtual) {
         await fetch(`/api/messages/${assistantMsgDoc.$id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -321,7 +339,7 @@ export default function App() {
       }
 
       // 6. Generate a better title if it's a new chat
-      if (!currentChatId) {
+      if (!currentChatId && user && !user.isVirtual) {
         generateChatTitle(queryText).then(newTitle => {
           if (chatId) {
             fetch(`/api/chats/${chatId}`, {

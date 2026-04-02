@@ -401,16 +401,32 @@ const startServer = async () => {
         }
       }
       res.json(userProfile);
-      } catch (error: any) {
+    } catch (error: any) {
       console.error("User Sync Error:", error.message, error.code);
+      
+      // If it's an Auth or Permission error, we return a "Virtual Profile" 
+      // so the user can still use the app (without saving history) while they fix the key.
+      if (error.code === 401 || error.code === 403) {
+        console.warn("Appwrite Auth/Permission Error. Returning virtual profile.");
+        const isAdminEmail = req.body.email === "munshidipa62@gmail.com" || req.body.email === "dibakar61601@gmail.com";
+        return res.json({
+          $id: req.body.uid,
+          name: req.body.name || 'User',
+          email: req.body.email || '',
+          role: isAdminEmail ? 'admin' : 'user',
+          credits: isAdminEmail ? 999999 : 10,
+          createdAt: new Date().toISOString(),
+          isVirtual: true,
+          warning: error.code === 401 
+            ? "Appwrite Authentication Error: Your APPWRITE_API_KEY is incorrect. Please check your Render Dashboard -> Environment Settings."
+            : "Appwrite Permission Error: Your API Key is missing 'Database' or 'Collection' scopes. Please check your Appwrite Console."
+        });
+      }
+
       let errorMessage = error.message;
       
       if (error.code === 404) {
         errorMessage = `Appwrite Resource Not Found: Check if Database ID "${APPWRITE_CONFIG.databaseId}" and Collection ID "${APPWRITE_CONFIG.collections.users}" exist.`;
-      } else if (error.code === 401) {
-        errorMessage = "Appwrite Authentication Error: Your APPWRITE_API_KEY is incorrect or missing permissions. Please check your Render Dashboard -> Environment Settings and ensure the API Key has 'Database' and 'Collection' permissions.";
-      } else if (error.code === 403) {
-        errorMessage = "Appwrite Permission Error: Your API Key does not have the necessary permissions. Ensure you have enabled 'Database' and 'Collection' scopes for this key in the Appwrite Console.";
       } else if (error.message.includes("Unknown attribute")) {
         const attr = error.message.split('"')[1] || "unknown";
         errorMessage = `Appwrite Schema Error: The attribute "${attr}" is missing in your "users" collection. Please add a string attribute named "${attr}" in the Appwrite Console.`;
