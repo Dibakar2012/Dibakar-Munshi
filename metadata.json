@@ -1,5 +1,4 @@
 {
   "name": "Dibakar",
-  "description": "The next generation AI search engine. Ask anything and get structured, accurate answers with real-time web sources.",
-  "requestFramePermissions": ["microphone", "camera", "geolocation"]
+  "description": "The next generation AI search engine. Ask anything and get structured, accurate answers with real-time web sources."
 }

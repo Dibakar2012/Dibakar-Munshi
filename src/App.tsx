@@ -8,7 +8,6 @@ import ChatArea from './components/ChatArea';
 import SearchBar from './components/SearchBar';
 import AdminDashboard from './components/AdminDashboard';
 import Paywall from './components/Paywall';
-import PermissionPopup from './components/PermissionPopup';
 import FeedbackModal from './components/FeedbackModal';
 import { LogIn, LogOut, CreditCard, User, ShieldCheck, ShieldAlert, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, ChevronDown, Plus, Mic, Globe, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,7 +26,6 @@ export default function App() {
 
   const [error, setError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [showPermissionPopup, setShowPermissionPopup] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
@@ -53,12 +51,6 @@ export default function App() {
     if (savedTheme === 'light') {
       setIsDarkMode(false);
       document.documentElement.classList.add('light');
-    }
-
-    // Check if permissions have been seen
-    const hasSeenPermissions = localStorage.getItem('hasSeenPermissions');
-    if (!hasSeenPermissions) {
-      setShowPermissionPopup(true);
     }
   }, []);
 
@@ -635,17 +627,6 @@ export default function App() {
 
         <AnimatePresence>
           {isAdminOpen && <AdminDashboard onClose={() => setIsAdminOpen(false)} />}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {showPermissionPopup && (
-            <PermissionPopup 
-              onClose={() => {
-                setShowPermissionPopup(false);
-                localStorage.setItem('hasSeenPermissions', 'true');
-              }} 
-            />
-          )}
         </AnimatePresence>
 
         <AnimatePresence>
