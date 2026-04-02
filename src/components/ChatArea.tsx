@@ -12,7 +12,7 @@ function cleanMessageContent(content: string) {
   // Remove common source/reference headers and everything after them
   // Also remove bracketed citations like [1], [2]
   return content
-    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations):[\s\S]*$/i, '')
+    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|Source):[\s\S]*$/i, '')
     .replace(/\[\d+\]/g, '')
     .trim();
 }
@@ -28,29 +28,29 @@ function SourcesToggle({ sources }: { sources: SearchSource[] }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="w-full mb-4">
+    <div className="w-full">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex items-center gap-2 px-4 py-2 rounded-full border transition-all text-xs font-bold uppercase tracking-widest shadow-sm",
+          "flex items-center gap-2 px-4 py-2 rounded-xl border transition-all text-[10px] font-black uppercase tracking-widest shadow-sm",
           isOpen 
             ? "bg-primary text-white border-primary" 
             : "bg-surface border-border text-text-muted hover:border-primary hover:text-primary"
         )}
       >
-        <Globe size={14} className={cn("transition-transform", isOpen && "rotate-12")} />
-        {isOpen ? "Hide Sources" : `View ${sources.length} Sources`}
+        <Globe size={12} className={cn("transition-transform", isOpen && "rotate-12")} />
+        {isOpen ? "Hide Search Sources" : `View ${sources.length} Sources`}
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ height: 0, opacity: 0, y: -10 }}
+            initial={{ height: 0, opacity: 0, y: -5 }}
             animate={{ height: 'auto', opacity: 1, y: 0 }}
-            exit={{ height: 0, opacity: 0, y: -10 }}
+            exit={{ height: 0, opacity: 0, y: -5 }}
             className="overflow-hidden mt-3"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2">
               {sources.map((source, i) => (
                 <motion.a
                   key={i}
@@ -371,10 +371,6 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery }:
                 "flex flex-col gap-2 md:gap-4 group",
                 msg.role === 'user' ? "items-end max-w-[85%] ml-auto" : "items-start flex-1"
               )}>
-                {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-                  <SourcesToggle sources={msg.sources} />
-                )}
-                
                 <div className={cn(
                   "relative",
                   msg.role === 'user' 
@@ -389,6 +385,13 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery }:
                       {msg.role === 'assistant' ? cleanMessageContent(msg.content) : msg.content}
                     </ReactMarkdown>
                   </div>
+
+                  {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-4">
+                      <SourcesToggle sources={msg.sources} />
+                    </div>
+                  )}
+
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-2 mt-4 md:mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
                       <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} onUpdate={fetchMessages} />
