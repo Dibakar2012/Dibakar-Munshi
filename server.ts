@@ -21,7 +21,15 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+import compression from "compression";
+
 export const app = express();
+
+// Optimization Middlewares
+app.use(compression());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(cors());
 
 const startServer = async () => {
   console.log("Starting Dibakar AI Server...");

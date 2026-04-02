@@ -19,6 +19,7 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [currentQuery, setCurrentQuery] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -224,6 +225,7 @@ export default function App() {
     }
 
     setIsSearching(true);
+    setCurrentQuery(queryText);
     let chatId = currentChatId;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
@@ -243,52 +245,56 @@ export default function App() {
         chatId = chatDoc.$id;
         setCurrentChatId(chatId);
       } else {
-        // Update existing chat's updatedAt
-        await fetch(`/api/chats/${chatId}`, {
+        // Update existing chat's updatedAt (don't await, it's not critical for search)
+        fetch(`/api/chats/${chatId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ updatedAt: new Date().toISOString() })
-        });
+        }).catch(e => console.error('Chat update error:', e));
       }
 
-      // 2. Add user message
-      await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          role: 'user',
-          content: queryText
-        })
-      });
+      // 2. Add user message and get history in parallel
+      const [userMsgRes, historyRes] = await Promise.all([
+        fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId,
+            role: 'user',
+            content: queryText
+          })
+        }),
+        fetch(`/api/messages?chatId=${chatId}`)
+      ]);
 
-      // 3. Get history for context
-      const historyRes = await fetch(`/api/messages?chatId=${chatId}`);
       const historyDocs = await historyRes.json();
       const history = historyDocs
         .slice(-6)
         .map((doc: any) => ({ role: doc.role, content: doc.content }))
         .filter((m: any) => m.content !== 'Thinking...');
 
-      // 4. Create assistant message placeholder
-      const assistantMsgRes = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chatId,
-          role: 'assistant',
-          content: 'Thinking...',
-          sources: JSON.stringify([])
+      // 3. Create assistant message placeholder and start search in parallel
+      const [assistantMsgRes, searchRes] = await Promise.all([
+        fetch('/api/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId,
+            role: 'assistant',
+            content: 'Thinking...',
+            sources: JSON.stringify([])
+          })
+        }),
+        fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
+          signal: controller.signal
         })
-      });
-      const assistantMsgDoc = await assistantMsgRes.json();
+      ]);
 
-      const response = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
-        signal: controller.signal
-      });
+      const assistantMsgDoc = await assistantMsgRes.json();
+      const response = searchRes;
 
       clearTimeout(timeoutId);
 
@@ -345,6 +351,7 @@ export default function App() {
       toast.error(`Search failed: ${error.message || 'Something went wrong'}`);
     } finally {
       setIsSearching(false);
+      setCurrentQuery(null);
     }
   };
 
@@ -603,7 +610,7 @@ export default function App() {
           />
         ) : (
           <>
-            <ChatArea chatId={currentChatId} isSearching={isSearching} user={user} />
+            <ChatArea chatId={currentChatId} isSearching={isSearching} user={user} optimisticQuery={currentQuery} />
             <SearchBar onSearch={handleSearch} disabled={isSearching} chatId={currentChatId} />
           </>
         )}

@@ -21,6 +21,7 @@ interface ChatAreaProps {
   chatId: string | null;
   isSearching: boolean;
   user: UserProfile | null;
+  optimisticQuery?: string | null;
 }
 
 function SourcesToggle({ sources }: { sources: SearchSource[] }) {
@@ -170,20 +171,23 @@ function FeedbackButtons({ chatId, messageId, feedback, onUpdate }: { chatId: st
   );
 }
 
-export default function ChatArea({ chatId, isSearching, user }: ChatAreaProps) {
+export default function ChatArea({ chatId, isSearching, user, optimisticQuery }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [msgLimit, setMsgLimit] = useState(INITIAL_LIMIT);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollHeight = useRef<number>(0);
+  const isAutoScrolling = useRef(true);
 
   const fetchMessages = async () => {
     if (!chatId) return;
     try {
       const response = await fetch(`/api/messages?chatId=${chatId}`);
+      if (!response.ok) return;
       const documents = await response.json();
       
       const newMessages = documents.map((doc: any) => ({ 
@@ -202,9 +206,17 @@ export default function ChatArea({ chatId, isSearching, user }: ChatAreaProps) {
         setHasMore(false);
       }
     } catch (err) {
-      console.error('Error fetching messages:', err);
+      // Silent error to avoid UI noise during polling
     }
   };
+
+  // Reset scroll lock when a new search starts
+  useEffect(() => {
+    if (isSearching) {
+      setUserScrolledUp(false);
+      isAutoScrolling.current = true;
+    }
+  }, [isSearching]);
 
   useEffect(() => {
     if (!chatId) {
@@ -218,28 +230,28 @@ export default function ChatArea({ chatId, isSearching, user }: ChatAreaProps) {
     setHasMore(true);
     fetchMessages();
 
-    // Polling for real-time updates (or use Appwrite Realtime)
-    const interval = setInterval(fetchMessages, 3000);
+    // Optimized Polling: Poll faster when searching, slower otherwise to save 1GB RAM resources
+    const pollInterval = isSearching ? 1500 : 8000;
+    const interval = setInterval(fetchMessages, pollInterval);
     return () => clearInterval(interval);
-  }, [chatId, msgLimit]);
+  }, [chatId, msgLimit, isSearching]);
 
   // Scroll to bottom on new messages or when searching
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || userScrolledUp) return;
 
     const { scrollTop, scrollHeight, clientHeight } = container;
     // Threshold to determine if user is "at the bottom"
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 200;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
 
     if (isAtBottom || isSearching) {
-      // Use a small delay to ensure the DOM has updated with new content
       const timeoutId = setTimeout(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+      }, 50);
       return () => clearTimeout(timeoutId);
     }
-  }, [messages, isSearching]);
+  }, [messages, isSearching, optimisticQuery, userScrolledUp]);
 
   // Maintain scroll position when loading more
   useEffect(() => {
@@ -254,9 +266,23 @@ export default function ChatArea({ chatId, isSearching, user }: ChatAreaProps) {
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     
-    // Show scroll button if user scrolls up significantly (more than 300px from bottom)
-    const isScrolledUp = scrollHeight - scrollTop - clientHeight > 300;
-    setShowScrollButton(isScrolledUp);
+    // Detect if user is scrolling up manually
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+    if (!isAtBottom && !isSearching) {
+      // If user scrolls up while NOT searching, lock the scroll
+      // We don't lock if searching because we want to follow the response
+    } else if (isAtBottom) {
+      setUserScrolledUp(false);
+    }
+
+    // If user scrolls up significantly, show scroll button and lock auto-scroll
+    const scrollDiff = scrollHeight - scrollTop - clientHeight;
+    if (scrollDiff > 300) {
+      setShowScrollButton(true);
+      if (!isSearching) setUserScrolledUp(true);
+    } else {
+      setShowScrollButton(false);
+    }
 
     if (scrollTop === 0 && hasMore && !loadingMore && messages.length >= msgLimit) {
       setLoadingMore(true);
@@ -379,6 +405,45 @@ export default function ChatArea({ chatId, isSearching, user }: ChatAreaProps) {
             </div>
           </motion.div>
         ))}
+
+        {/* Optimistic User Message */}
+        {isSearching && optimisticQuery && !messages.some(m => m.content === optimisticQuery && m.role === 'user') && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full"
+          >
+            <div className="flex gap-3 md:gap-6 max-w-3xl mx-auto w-full justify-end">
+              <div className="flex flex-col items-end max-w-[85%] ml-auto gap-2">
+                <div className="px-4 py-2.5 rounded-[1.5rem] rounded-tr-none bg-primary text-white shadow-lg w-fit max-w-full">
+                  <div className="text-white font-semibold prose prose-sm md:prose-base max-w-none leading-relaxed">
+                    <ReactMarkdown>{optimisticQuery}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+              <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
+                <User className="w-3.5 h-3.5 md:w-4.5 md:h-4.5" />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Thinking State */}
+        {isSearching && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex gap-3 md:gap-6 max-w-3xl mx-auto w-full justify-start"
+          >
+            <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1 shadow-sm border border-primary/5">
+              <Bot className="text-primary w-3.5 h-3.5 md:w-4.5 md:h-4.5" />
+            </div>
+            <div className="flex items-center gap-2 text-text-muted text-xs font-medium bg-surface/50 px-4 py-2 rounded-2xl border border-border italic">
+              <Loader2 className="w-3 h-3 animate-spin text-primary" />
+              Dibakar AI is thinking...
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
       <div ref={scrollRef} />
 
