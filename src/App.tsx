@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, serverTimestamp, updateDoc, increment, query, orderBy, limit, getDocs, getDocFromServer } from 'firebase/firestore';
-import { auth, db, googleProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from './lib/firebase';
-import { generateSearchResponse, generateChatTitle, generateSearchResponseStream } from './lib/geminiService';
+import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './lib/firebase';
+import { databases, APPWRITE_CONFIG, ID, Query } from './lib/appwrite';
+import { generateSearchResponse, generateChatTitle } from './lib/geminiService';
 import { UserProfile, Chat, Message, SearchResponse } from './types';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
@@ -11,7 +10,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Paywall from './components/Paywall';
 import PermissionPopup from './components/PermissionPopup';
 import FeedbackModal from './components/FeedbackModal';
-import { LogIn, LogOut, CreditCard, User, ShieldCheck, ShieldAlert, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight } from 'lucide-react';
+import { LogIn, LogOut, CreditCard, User, ShieldCheck, ShieldAlert, MoreVertical, History, LayoutDashboard, Phone, Zap, Sun, Moon, MessageSquarePlus, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, ChevronDown, Plus, Mic, Globe, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { toast, Toaster } from 'sonner';
@@ -87,168 +86,128 @@ export default function App() {
       });
     }, 15000); // 15 seconds
 
-    async function testConnection() {
+    async function initAuth() {
       try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-        console.log('Firestore connection test successful');
-      } catch (err: any) {
-        console.warn('Firestore connection test failed:', err.message);
-        if (err.message?.includes('the client is offline')) {
-          console.warn('Firestore is offline. Proceeding with cached data if available.');
-          // Don't set a blocking error for offline state
-        } else if (err.message?.includes('PERMISSION_DENIED')) {
-          console.warn('Permission denied for connection test. This is often normal if rules are strictly locked down.');
-        }
-      }
-    }
-    testConnection();
-
-    let userUnsubscribe: (() => void) | null = null;
-
-    console.log('Auth state listener initialized');
-    const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser ? `User logged in: ${firebaseUser.email || firebaseUser.uid}` : 'No user (logged out)');
-      
-      if (!firebaseUser) {
-        console.log('Clearing user state...');
-        setUser(null);
-        setIsAuthReady(false);
-        setLoading(false);
-        return;
-      }
-
-      // Clean up previous user listener
-      if (userUnsubscribe) {
-        userUnsubscribe();
-        userUnsubscribe = null;
-      }
-
-      // Set provisional user to prevent login loop while fetching profile
-      console.log('Setting provisional user state...');
-      setUser({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        name: firebaseUser.displayName || 'User',
-        role: 'user',
-        credits: 0,
-        createdAt: new Date().toISOString()
-      } as UserProfile);
-
-      try {
-        const userRef = doc(db, 'users', firebaseUser.uid);
-        let userSnap;
-        try {
-          userSnap = await getDoc(userRef);
-          console.log('User document exists:', userSnap.exists());
-        } catch (err: any) {
-          console.warn('Initial user profile fetch failed:', err.message);
-          // If it's a permission error, we'll still try to proceed
-        }
-
-        const isAdminEmail = 
-          firebaseUser.email?.toLowerCase() === "munshidipa62@gmail.com" || 
-          firebaseUser.email?.toLowerCase() === "munshidipa@gmail.com" || 
-          firebaseUser.email?.toLowerCase() === "dibakar61601@gmail.com" ||
-          firebaseUser.phoneNumber === "+919475954278";
-
-        if (!userSnap || !userSnap.exists()) {
-          console.log('Creating/Repairing user document...');
-          const newUser: any = {
-            uid: firebaseUser.uid,
-            credits: isAdminEmail ? 999999 : 10,
-            role: isAdminEmail ? 'admin' : 'user',
-            createdAt: new Date().toISOString(),
-            name: firebaseUser.displayName || 'User',
-            email: firebaseUser.email || ''
-          };
-          
-          if (firebaseUser.phoneNumber) newUser.phoneNumber = firebaseUser.phoneNumber;
-          
-          try {
-            await setDoc(userRef, newUser, { merge: true });
-            console.log('User document created/updated successfully.');
-            // Update global stats
-            await setDoc(doc(db, 'stats', 'global'), { 
-              totalUsers: increment(1) 
-            }, { merge: true }).catch(e => console.error('Stats update error:', e));
-          } catch (setErr: any) {
-            console.error('Failed to create/update user document:', setErr.message);
-            // If we can't even create the document, we might have a major rules issue
-          }
-        } else {
-          // Check if user should be admin but isn't yet
-          const userData = userSnap.data();
-          console.log('Existing user data:', userData.role, 'isAdminEmail:', isAdminEmail);
-          if (isAdminEmail && userData.role !== 'admin') {
-            console.log('User should be admin, updating role for:', firebaseUser.email);
-            try {
-              await updateDoc(userRef, { role: 'admin', credits: 999999 });
-              console.log('Admin role update successful for:', firebaseUser.email);
-              toast.success('Admin access granted!');
-            } catch (updateErr: any) {
-              console.error('Failed to update admin role:', updateErr.message);
-            }
-          }
-        }
-
-        // Real-time listener for credits and role
-        userUnsubscribe = onSnapshot(userRef, (doc) => {
-          if (doc.exists()) {
-            console.log('User profile updated from Firestore:', doc.data().role);
-            const userData = doc.data() as UserProfile;
-            setUser(userData);
-            setIsAuthReady(true);
-            setLoading(false);
+        console.log('Checking Firebase session...');
+        onAuthStateChanged(auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            console.log('Firebase user found:', firebaseUser.email);
+            // Sync user profile with Appwrite via backend
+            await syncUserProfile(firebaseUser);
           } else {
-            console.warn('User profile document does not exist yet in snapshot');
-            // If it doesn't exist, we'll keep the provisional user but set auth ready
-            // so they can at least see the UI (though they might have 0 credits)
+            console.log('No active Firebase session');
+            setUser(null);
             setIsAuthReady(true);
             setLoading(false);
           }
-        }, (err) => {
-          console.error('Firestore snapshot error:', err);
-          // If snapshot fails, we still need to stop loading
-          setIsAuthReady(true);
-          setLoading(false);
         });
       } catch (err: any) {
-        console.error('Error in auth state change handler:', err);
-        setError(`Auth Handler Error: ${err.message}`);
+        console.error('Auth init error:', err.message);
+        setUser(null);
+        setIsAuthReady(true);
         setLoading(false);
       }
-    });
+    }
+
+    async function syncUserProfile(firebaseUser: any) {
+      try {
+        const response = await fetch('/api/user/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to sync user profile');
+        }
+        
+        const doc = data;
+        const userProfile = {
+          uid: doc.$id,
+          name: doc.name || firebaseUser.displayName || 'User',
+          email: doc.email || firebaseUser.email || '',
+          role: doc.role || 'user',
+          credits: doc.credits !== undefined ? doc.credits : 10,
+          createdAt: doc.createdAt || new Date().toISOString()
+        } as UserProfile;
+
+        if (doc.isVirtual) {
+          toast.error("Appwrite Setup Required", {
+            description: doc.warning,
+            duration: 10000,
+          });
+        }
+
+        setUser(userProfile);
+        setIsAuthReady(true);
+        setLoading(false);
+      } catch (err: any) {
+        console.error('Error syncing user profile:', err);
+        setError(`Sync Error: ${err.message}`);
+        setLoading(false);
+      }
+    }
+
+    initAuth();
 
     return () => {
       clearTimeout(loadingTimeout);
-      authUnsubscribe();
-      if (userUnsubscribe) userUnsubscribe();
     };
   }, []);
 
   const [isPaywallOpen, setIsPaywallOpen] = useState(false);
 
+  const loginInProgress = React.useRef(false);
+
   const handleLogin = async () => {
-    console.log('Attempting login with Google...');
+    if (loginInProgress.current) {
+      console.warn('Login already in progress...');
+      return;
+    }
+
+    console.log('Attempting login with Firebase Google...');
     setLoading(true);
     setError(null);
+    loginInProgress.current = true;
+
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      console.log('Login successful:', result.user.email);
-      // We don't set loading to false here. 
-      // The onAuthStateChanged listener will handle it once the profile is ready.
+      await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged will handle the rest
     } catch (error: any) {
       console.error('Login Error:', error.code, error.message);
-      if (error.code === 'auth/unauthorized-domain') {
-        setError(`Login failed: This domain is not authorized in Firebase. Please add your App URL to 'Authorized Domains' in the Firebase Console (Authentication > Settings).`);
+      
+      if (error.code === 'auth/popup-blocked') {
+        setError('Popup blocked by browser. Please enable popups for this site and try again.');
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        setError('Login request was cancelled. Please try again.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setError('Login window was closed. Please try again.');
       } else {
         setError(`Login failed: ${error.message}`);
       }
+      
       setLoading(false);
+    } finally {
+      loginInProgress.current = false;
     }
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setIsAuthReady(false);
+    } catch (err: any) {
+      console.error('Logout error:', err);
+      toast.error('Logout failed');
+    }
+  };
 
   const handleSearch = async (queryText: string) => {
     console.log('handleSearch called with:', queryText);
@@ -272,48 +231,57 @@ export default function App() {
     try {
       // 1. Create new chat if none selected
       if (!chatId) {
-        const chatRef = await addDoc(collection(db, 'chats'), {
-          userId: user.uid,
-          title: queryText.slice(0, 40) + (queryText.length > 40 ? '...' : ''),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+        const res = await fetch('/api/chats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.uid,
+            title: queryText.slice(0, 40) + (queryText.length > 40 ? '...' : '')
+          })
         });
-        chatId = chatRef.id;
+        const chatDoc = await res.json();
+        chatId = chatDoc.$id;
         setCurrentChatId(chatId);
       } else {
         // Update existing chat's updatedAt
-        await updateDoc(doc(db, 'chats', chatId), {
-          updatedAt: new Date().toISOString()
+        await fetch(`/api/chats/${chatId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updatedAt: new Date().toISOString() })
         });
       }
 
       // 2. Add user message
-      await addDoc(collection(db, 'chats', chatId, 'messages'), {
-        chatId,
-        role: 'user',
-        content: queryText,
-        createdAt: new Date().toISOString()
+      await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId,
+          role: 'user',
+          content: queryText
+        })
       });
 
       // 3. Get history for context
-      const historySnap = await getDocs(query(
-        collection(db, 'chats', chatId, 'messages'),
-        orderBy('createdAt', 'desc'),
-        limit(6) // Get 6 to skip the current user message if needed
-      ));
-      const history = historySnap.docs
-        .map(doc => doc.data())
-        .filter(m => m.content !== 'Thinking...') // Don't include the placeholder
-        .reverse();
+      const historyRes = await fetch(`/api/messages?chatId=${chatId}`);
+      const historyDocs = await historyRes.json();
+      const history = historyDocs
+        .slice(-6)
+        .map((doc: any) => ({ role: doc.role, content: doc.content }))
+        .filter((m: any) => m.content !== 'Thinking...');
 
-      // 4. Call Search API (Backend with Groq/Serper)
-      const assistantMsgRef = await addDoc(collection(db, 'chats', chatId, 'messages'), {
-        chatId,
-        role: 'assistant',
-        content: 'Thinking...',
-        sources: [],
-        createdAt: new Date().toISOString()
+      // 4. Create assistant message placeholder
+      const assistantMsgRes = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chatId,
+          role: 'assistant',
+          content: 'Thinking...',
+          sources: JSON.stringify([])
+        })
       });
+      const assistantMsgDoc = await assistantMsgRes.json();
 
       const response = await fetch('/api/search', {
         method: 'POST',
@@ -335,10 +303,14 @@ export default function App() {
 
       if (!response.ok) throw new Error(data.error || 'Search failed');
 
-      if (assistantMsgRef) {
-        await updateDoc(assistantMsgRef, {
-          content: data.answer,
-          sources: data.sources || []
+      if (assistantMsgDoc) {
+        await fetch(`/api/messages/${assistantMsgDoc.$id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: data.answer,
+            sources: JSON.stringify(data.sources || [])
+          })
         });
       }
 
@@ -346,61 +318,31 @@ export default function App() {
       if (!currentChatId) {
         generateChatTitle(queryText).then(newTitle => {
           if (chatId) {
-            updateDoc(doc(db, 'chats', chatId), { title: newTitle }).catch(e => console.error('Title update error:', e));
+            fetch(`/api/chats/${chatId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: newTitle })
+            }).catch(e => console.error('Title update error:', e));
           }
         }).catch(e => console.error('Title generation error:', e));
       }
 
-      // 7. Deduct credit and update stats if not admin
-      if (user && user.uid) {
+      // 7. Deduct credit if not admin
+      if (user && user.uid && user.role !== 'admin') {
         try {
-          const today = new Date().toISOString().split('T')[0];
-          const dailyStatsRef = doc(db, 'stats', `daily_${today}`);
-          const globalStatsRef = doc(db, 'stats', 'global');
-          
-          const statsUpdate = {
-            totalRequests: increment(1),
-            llamaTokens: increment(data.usage?.total_tokens || 0),
-            serperRequests: increment(data.sources?.length > 0 ? 1 : 0)
-          };
-
-          const userUpdate: any = {};
-          if (user.role !== 'admin') {
-            userUpdate.credits = increment(-1);
-          }
-
-          await Promise.all([
-            setDoc(dailyStatsRef, statsUpdate, { merge: true }),
-            setDoc(globalStatsRef, statsUpdate, { merge: true }),
-            Object.keys(userUpdate).length > 0 ? updateDoc(doc(db, 'users', user.uid), userUpdate) : Promise.resolve()
-          ]);
+          await fetch(`/api/user/${user.uid}/credits`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credits: user.credits - 1 })
+          });
         } catch (updateErr) {
-          console.error('Failed to update credits/stats:', updateErr);
+          console.error('Failed to update credits:', updateErr);
         }
       }
 
     } catch (error: any) {
       console.error('Search Error:', error);
       toast.error(`Search failed: ${error.message || 'Something went wrong'}`);
-      // If we have a message reference, update it with the error
-      if (chatId) {
-        try {
-          const messagesSnap = await getDocs(query(
-            collection(db, 'chats', chatId, 'messages'),
-            orderBy('createdAt', 'desc'),
-            limit(1)
-          ));
-          
-          const lastMsg = messagesSnap.docs[0];
-          if (lastMsg && lastMsg.data().role === 'assistant') {
-            await updateDoc(lastMsg.ref, {
-              content: `Error: ${error.message || 'Something went wrong. Please try again later.'}`
-            });
-          }
-        } catch (updateErr) {
-          console.error('Failed to update error message in chat:', updateErr);
-        }
-      }
     } finally {
       setIsSearching(false);
     }
@@ -410,7 +352,7 @@ export default function App() {
     return (
       <div className="h-[100dvh] bg-background flex flex-col items-center justify-center gap-4">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-primary font-medium animate-pulse">Loading Dibakar AI...</p>
+        <p className="text-primary font-medium animate-pulse">Loading Dibakar...</p>
       </div>
     );
   }
@@ -443,22 +385,19 @@ export default function App() {
   if (!user) {
     return (
       <div className="h-[100dvh] bg-background flex flex-col items-center justify-center p-4 text-center overflow-hidden relative">
-        {/* Animated Background Blobs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] bg-accent/20 rounded-full blur-[120px] animate-pulse delay-700" />
+        {/* Animated Background Blobs - Subtle */}
+        <div className="absolute top-[-5%] left-[-5%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px] animate-pulse" />
+        <div className="absolute bottom-[-5%] right-[-5%] w-[40%] h-[40%] bg-accent/5 rounded-full blur-[100px] animate-pulse delay-700" />
         
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="max-w-sm w-full auth-card p-fluid rounded-[3rem] space-y-fluid relative z-10 border border-white/10 shadow-2xl"
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="max-w-sm w-full auth-card p-6 md:p-10 rounded-[3rem] space-y-6 md:space-y-8 relative z-10 border border-white/5 shadow-2xl"
         >
           <div className="space-y-2">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary/20">
-              <ShieldCheck className="text-primary" size={32} />
-            </div>
-            <h1 className="text-fluid-2xl font-black tracking-tighter text-white">SIGN UP</h1>
-            <p className="text-text-muted text-fluid-sm font-medium px-4">Join Dibakar AI to experience the future of search</p>
+            <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-white uppercase">Dibakar <span className="text-primary drop-shadow-[0_0_10px_rgba(0,255,150,0.2)]">AI</span></h1>
+            <p className="text-text-muted text-sm md:text-base font-medium px-4">Experience the future of search with AI</p>
           </div>
 
           {error && (
@@ -520,11 +459,18 @@ export default function App() {
   const showPaywall = isAuthReady && ((user.credits <= 0 && user.role !== 'admin') || isPaywallOpen);
 
   return (
-    <div className="h-[100dvh] min-h-[calc(var(--vh,1vh)*100)] bg-background flex flex-col overflow-hidden">
+    <div className="h-[100dvh] min-h-[calc(var(--vh,1vh)*100)] bg-background flex flex-col overflow-hidden relative">
+      {/* Global Background Decorative Elements - Subtle */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute top-[-5%] right-[-5%] w-[30%] h-[30%] bg-primary/2 rounded-full blur-[100px] animate-pulse" />
+        <div className="absolute bottom-[-5%] left-[-5%] w-[30%] h-[30%] bg-secondary/2 rounded-full blur-[100px] animate-pulse delay-1000" />
+      </div>
+
       <Toaster position="top-center" richColors />
       <AnimatePresence>
         {isHistoryOpen && (
           <Sidebar
+            userId={user.uid}
             currentChatId={currentChatId}
             onSelectChat={(id) => { setCurrentChatId(id); setIsHistoryOpen(false); }}
             onNewChat={() => { setCurrentChatId(null); setIsHistoryOpen(false); }}
@@ -536,33 +482,31 @@ export default function App() {
       </AnimatePresence>
 
       <main className="flex-1 flex flex-col relative overflow-hidden">
-        <header className={`h-14 border-b border-border flex items-center justify-between px-3 md:px-6 bg-background/80 backdrop-blur-xl sticky top-0 transition-all ${isMoreMenuOpen ? 'z-[100]' : 'z-10'}`}>
-          <div className="flex items-center gap-2 md:gap-4">
+        <header className="h-16 flex items-center justify-between px-4 md:px-6 z-50 bg-surface/30 backdrop-blur-xl border-b border-white/5">
+          <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsHistoryOpen(true)}
-              className="p-2 hover:bg-surface-hover rounded-xl text-text-muted md:hidden active:scale-90 transition-transform"
+              className="p-2.5 hover:bg-surface-hover rounded-xl text-text-muted transition-all active:scale-90"
             >
-              <History size={20} />
+              <History size={22} />
             </button>
-            <h1 className="text-lg md:text-xl font-black text-primary tracking-tighter">Dibakar AI</h1>
-            <div className="flex items-center gap-1.5 md:gap-2 bg-surface px-2 md:px-3 py-1 md:py-1.5 rounded-full border border-border shadow-sm">
-              <Zap size={12} className="text-primary" />
-              <span className="text-[10px] md:text-sm font-black uppercase tracking-tighter">
-                {user?.role === 'admin' ? 'Unlimited' : `${user?.credits || 0} Cr`}
-              </span>
+            <div className="flex items-center gap-2 bg-surface/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-border cursor-pointer hover:bg-surface-hover transition-all group">
+              <span className="text-sm md:text-base font-bold tracking-tight">Dibakar <span className="text-primary drop-shadow-[0_0_8px_rgba(0,255,150,0.4)]">AI</span></span>
+              <ChevronDown size={16} className="text-text-muted group-hover:text-text transition-colors" />
             </div>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-4">
-            <div className="hidden sm:flex items-center gap-2 text-sm text-text-muted">
-              <User size={16} />
-              <span className="hidden md:inline">{user?.name || user?.email || user?.phoneNumber || 'User'}</span>
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-2 bg-surface/50 backdrop-blur-md px-4 py-2 rounded-2xl border border-border">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">
+                {user?.role === 'admin' ? 'Unlimited' : `${user?.credits || 0} Credits`}
+              </span>
             </div>
             
             <div className="relative">
               <button
                 onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
-                className="p-2 hover:bg-surface-hover rounded-full text-text-muted hover:text-white transition-colors"
+                className="w-10 h-10 bg-surface border border-border rounded-full flex items-center justify-center text-text-muted hover:text-primary hover:border-primary/50 transition-all active:scale-90"
               >
                 <MoreVertical size={20} />
               </button>
@@ -653,10 +597,13 @@ export default function App() {
         </header>
 
         {showPaywall ? (
-          <Paywall onClose={isPaywallOpen ? () => setIsPaywallOpen(false) : undefined} />
+          <Paywall 
+            user={user!}
+            onClose={isPaywallOpen ? () => setIsPaywallOpen(false) : undefined} 
+          />
         ) : (
           <>
-            <ChatArea chatId={currentChatId} isSearching={isSearching} />
+            <ChatArea chatId={currentChatId} isSearching={isSearching} user={user} />
             <SearchBar onSearch={handleSearch} disabled={isSearching} chatId={currentChatId} />
           </>
         )}
@@ -677,7 +624,12 @@ export default function App() {
         </AnimatePresence>
 
         <AnimatePresence>
-          {isFeedbackOpen && <FeedbackModal onClose={() => setIsFeedbackOpen(false)} />}
+          {isFeedbackOpen && user && (
+            <FeedbackModal 
+              user={user}
+              onClose={() => setIsFeedbackOpen(false)} 
+            />
+          )}
         </AnimatePresence>
       </main>
     </div>

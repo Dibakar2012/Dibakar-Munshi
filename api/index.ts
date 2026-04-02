@@ -5,9 +5,7 @@ import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import cors from "cors";
-import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import fs from "fs";
+import { Client, Databases, ID, Query } from "node-appwrite";
 
 dotenv.config();
 
@@ -15,28 +13,21 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Firebase Admin
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
-    const dbId = firebaseConfig.firestoreDatabaseId;
-    
-    const adminApp = getApps().length === 0 
-      ? initializeApp({ projectId: projectId }) 
-      : getApps()[0];
-    
-    if (dbId && dbId !== "(default)") {
-      db = getFirestore(adminApp, dbId);
-    } else {
-      db = getFirestore(adminApp);
-    }
+// Appwrite Setup
+const appwriteClient = new Client()
+  .setEndpoint(process.env.APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1")
+  .setProject(process.env.APPWRITE_PROJECT_ID || "")
+  .setKey(process.env.APPWRITE_API_KEY || "");
+
+const appwriteDatabases = new Databases(appwriteClient);
+
+const APPWRITE_CONFIG = {
+  databaseId: process.env.APPWRITE_DATABASE_ID || "main",
+  collections: {
+    premiumRequests: process.env.APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || "premium_requests",
+    stats: process.env.APPWRITE_STATS_COLLECTION_ID || "stats",
   }
-} catch (err) {
-  console.error("Failed to initialize Firebase Admin in Vercel:", err);
-}
+};
 
 // Groq and Serper keys
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -55,24 +46,23 @@ const transporter = nodemailer.createTransport({
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
-    firebase: !!db, 
+    appwrite: true, 
     hasKeys: !!(GROQ_API_KEY && SERPER_API_KEY),
     env: process.env.NODE_ENV,
     vercel: true
   });
 });
 
-app.get("/api/test-firebase", async (req, res) => {
-  if (!db) return res.status(500).json({ error: "Firebase Admin not initialized" });
+app.get("/api/test-appwrite", async (req, res) => {
   try {
-    const testRef = db.collection('test_connection').doc('vercel_test');
-    await testRef.set({
-      timestamp: FieldValue.serverTimestamp(),
-      message: "Manual test from Vercel /api/test-firebase",
-      userAgent: req.headers['user-agent']
-    }, { merge: true });
-    res.json({ success: true, message: "Firestore write successful from Vercel" });
+    const result = await appwriteDatabases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.stats,
+      [Query.limit(1)]
+    );
+    res.json({ success: true, message: "Appwrite connection successful from Vercel", count: result.total });
   } catch (err: any) {
+    console.error("[Appwrite Vercel Test] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -99,6 +89,25 @@ app.post("/api/premium-request", async (req, res) => {
     if (process.env.GMAIL_PASS) {
       await transporter.sendMail(adminMailOptions);
       await transporter.sendMail(userMailOptions);
+    }
+
+    // Save to Appwrite
+    try {
+      await appwriteDatabases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.premiumRequests,
+        ID.unique(),
+        {
+          name,
+          email,
+          phone,
+          plan,
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        }
+      );
+    } catch (dbErr) {
+      console.error("Failed to save premium request to Appwrite in Vercel:", dbErr);
     }
 
     res.json({ success: true, message: "Request sent successfully" });
@@ -130,7 +139,7 @@ app.post("/api/search", async (req, res) => {
       } catch (serperErr) {}
     }
 
-    const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. DO NOT include source links or a 'Sources' section at the end of your answer, as they will be displayed separately in the UI.\n\nContext:\n${context || "No web context needed for this query."}`;
+    const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. Put the source links at the end if context was used.\n\nContext:\n${context || "No web context needed for this query."}`;
 
     const chatCompletion = await groq.chat.completions.create({
       messages: [{ role: "system", content: systemInstruction }, ...history.map((h: any) => ({ role: h.role, content: h.content })), { role: "user", content: query }],
@@ -140,17 +149,39 @@ app.post("/api/search", async (req, res) => {
     const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
     const llamaTokens = chatCompletion.usage?.total_tokens || 0;
 
-    if (db) {
-      try {
-        const today = new Date().toISOString().split('T')[0];
-        const dailyStatsRef = db.collection('stats').doc(`daily_${today}`);
-        const globalStatsRef = db.collection('stats').doc('global');
-        const updateStats = async (ref: any) => {
-          await ref.set({ totalRequests: FieldValue.increment(1), llamaTokens: FieldValue.increment(llamaTokens), serperRequests: FieldValue.increment(context ? 1 : 0), lastUpdated: FieldValue.serverTimestamp(), date: today }, { merge: true });
-        };
-        await Promise.all([updateStats(dailyStatsRef), updateStats(globalStatsRef)]);
-      } catch (dbErr) {}
-    }
+    // Record Usage in Appwrite
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const updateStats = async (docId: string) => {
+        try {
+          let doc;
+          try {
+            doc = await appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId);
+          } catch (err: any) {
+            if (err.code === 404) {
+              await appwriteDatabases.createDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
+                totalRequests: 1,
+                llamaTokens: llamaTokens,
+                serperRequests: context ? 1 : 0,
+                lastUpdated: new Date().toISOString(),
+                date: today
+              });
+              return;
+            }
+            throw err;
+          }
+          await appwriteDatabases.updateDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
+            totalRequests: (doc.totalRequests || 0) + 1,
+            llamaTokens: (doc.llamaTokens || 0) + llamaTokens,
+            serperRequests: (doc.serperRequests || 0) + (context ? 1 : 0),
+            lastUpdated: new Date().toISOString()
+          });
+        } catch (innerErr: any) {
+          console.error(`[Appwrite Vercel Stats] Error updating ${docId}:`, innerErr.message);
+        }
+      };
+      await Promise.all([updateStats(`daily_${today}`), updateStats('global')]);
+    } catch (dbErr) {}
 
     res.json({ answer, sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })), usage: { llamaTokens, serperRequests: context ? 1 : 0 } });
   } catch (error: any) {

@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, limit, startAfter, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { Message, SearchSource } from '../types';
+import { databases, APPWRITE_CONFIG, Query } from '../lib/appwrite';
+import { Message, SearchSource, UserProfile } from '../types';
 import ReactMarkdown from 'react-markdown';
-import { ExternalLink, Globe, User, Bot, Loader2, Copy, Check, ArrowDown, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ExternalLink, Globe, User, Bot, Loader2, Copy, Check, ArrowDown, ThumbsUp, ThumbsDown, Zap, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
@@ -21,6 +20,7 @@ function cleanMessageContent(content: string) {
 interface ChatAreaProps {
   chatId: string | null;
   isSearching: boolean;
+  user: UserProfile | null;
 }
 
 function SourcesToggle({ sources }: { sources: SearchSource[] }) {
@@ -129,13 +129,16 @@ function CopyButton({ content }: { content: string }) {
   );
 }
 
-function FeedbackButtons({ chatId, messageId, feedback }: { chatId: string, messageId: string, feedback?: 'up' | 'down' | null }) {
+function FeedbackButtons({ chatId, messageId, feedback, onUpdate }: { chatId: string, messageId: string, feedback?: 'up' | 'down' | null, onUpdate: () => void }) {
   const handleFeedback = async (type: 'up' | 'down') => {
     try {
       const newFeedback = feedback === type ? null : type;
-      await updateDoc(doc(db, 'chats', chatId, 'messages', messageId), {
-        feedback: newFeedback
+      await fetch(`/api/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: newFeedback })
       });
+      onUpdate();
     } catch (err) {
       console.error('Failed to update feedback: ', err);
     }
@@ -167,7 +170,7 @@ function FeedbackButtons({ chatId, messageId, feedback }: { chatId: string, mess
   );
 }
 
-export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
+export default function ChatArea({ chatId, isSearching, user }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -177,6 +180,32 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const lastScrollHeight = useRef<number>(0);
 
+  const fetchMessages = async () => {
+    if (!chatId) return;
+    try {
+      const response = await fetch(`/api/messages?chatId=${chatId}`);
+      const documents = await response.json();
+      
+      const newMessages = documents.map((doc: any) => ({ 
+        id: doc.$id, 
+        chatId: doc.chatId,
+        role: doc.role,
+        content: doc.content,
+        sources: doc.sources ? JSON.parse(doc.sources) : [],
+        feedback: doc.feedback,
+        createdAt: doc.createdAt
+      } as Message));
+      
+      setMessages(newMessages);
+      
+      if (documents.length < msgLimit) {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  };
+
   useEffect(() => {
     if (!chatId) {
       setMessages([]);
@@ -185,36 +214,13 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
       return;
     }
 
-    // Reset for new chat
     setMsgLimit(INITIAL_LIMIT);
     setHasMore(true);
+    fetchMessages();
 
-    const q = query(
-      collection(db, 'chats', chatId, 'messages'),
-      orderBy('createdAt', 'desc'),
-      limit(msgLimit)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      try {
-        const newMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message)).reverse();
-        setMessages(newMessages);
-        
-        // If we got fewer messages than the limit, we've reached the end
-        if (snapshot.docs.length < msgLimit) {
-          setHasMore(false);
-        }
-      } catch (err: any) {
-        console.error('Error processing messages snapshot:', err);
-      }
-    }, (err) => {
-      console.error('Firestore snapshot error in ChatArea:', err);
-      if (err.message?.includes('Missing or insufficient permissions')) {
-        setHasMore(false);
-      }
-    });
-
-    return () => unsubscribe();
+    // Polling for real-time updates (or use Appwrite Realtime)
+    const interval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(interval);
   }, [chatId, msgLimit]);
 
   // Scroll to bottom on new messages or when searching
@@ -266,17 +272,31 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
 
   if (!chatId) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-fluid max-w-3xl mx-auto">
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-4xl mx-auto w-full relative overflow-hidden">
+        {/* Decorative Background Blobs - Reduced opacity and size */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none">
+          <div className="absolute top-1/3 left-1/3 w-48 h-48 bg-primary/5 rounded-full blur-[80px] animate-pulse" />
+          <div className="absolute bottom-1/3 right-1/3 w-48 h-48 bg-secondary/5 rounded-full blur-[80px] animate-pulse delay-1000" />
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-fluid-2xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent"
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="text-center space-y-6 w-full relative z-10"
         >
-          Dibakar AI
-        </motion.h1>
-        <p className="text-text-muted max-w-sm text-fluid-base">
-          The next generation AI search engine. Ask anything and get structured, accurate answers with real-time web sources.
-        </p>
+          <div className="space-y-4">
+            <h1 className="text-6xl md:text-8xl font-black tracking-tighter text-white uppercase drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+              Dibakar <span className="text-primary drop-shadow-[0_0_10px_rgba(0,255,150,0.2)]">AI</span>
+            </h1>
+            <motion.div 
+              initial={{ scaleX: 0, opacity: 0 }}
+              animate={{ scaleX: 1, opacity: 1 }}
+              transition={{ delay: 0.4, duration: 1, ease: "circOut" }}
+              className="h-px w-16 bg-gradient-to-r from-transparent via-primary/40 to-transparent mx-auto"
+            />
+          </div>
+        </motion.div>
       </div>
     );
   }
@@ -303,8 +323,13 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
         {messages.map((msg, idx) => (
           <motion.div
             key={msg.id || idx}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ 
+              duration: 0.4, 
+              ease: [0.23, 1, 0.32, 1],
+              delay: Math.min(idx * 0.05, 0.3) // Stagger but cap it
+            }}
             className="w-full"
           >
             <div className={cn(
@@ -340,7 +365,7 @@ export default function ChatArea({ chatId, isSearching }: ChatAreaProps) {
                   </div>
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-2 mt-4 md:mt-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} />
+                      <FeedbackButtons chatId={chatId!} messageId={msg.id} feedback={msg.feedback} onUpdate={fetchMessages} />
                       <CopyButton content={msg.content} />
                     </div>
                   )}

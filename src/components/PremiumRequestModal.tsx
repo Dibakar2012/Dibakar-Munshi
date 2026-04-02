@@ -2,23 +2,22 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, User, Phone, MapPin, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { db, auth } from '../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { UserProfile } from '../types';
 
 interface PremiumRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userEmail?: string | null;
+  user: UserProfile;
 }
 
 type Step = 1 | 2 | 3 | 4;
 
-export default function PremiumRequestModal({ isOpen, onClose, userEmail }: PremiumRequestModalProps) {
+export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRequestModalProps) {
   const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    email: userEmail || '',
-    name: '',
+    email: user.email || '',
+    name: user.name || '',
     phone: '',
     plan: 'Starter Plan (₹35)',
     couponCode: ''
@@ -47,24 +46,20 @@ export default function PremiumRequestModal({ isOpen, onClose, userEmail }: Prem
   };
 
   const handleSubmit = async () => {
-    if (!auth.currentUser) {
-      toast.error('You must be logged in');
-      return;
-    }
-
-    setIsSubmitting(true);
     try {
-      // 1. Create document in Firestore
-      await addDoc(collection(db, 'premium_requests'), {
-        userId: auth.currentUser.uid,
-        email: formData.email,
-        name: formData.name,
-        phone: formData.phone,
-        plan: formData.plan,
-        couponCode: formData.couponCode,
-        finalPrice: discountedPrice,
-        status: 'pending',
-        createdAt: new Date().toISOString()
+      setIsSubmitting(true);
+      // 1. Create document in Appwrite via backend
+      await fetch('/api/premium-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          userEmail: formData.email,
+          plan: formData.plan,
+          paymentMethod: 'WhatsApp/Manual',
+          transactionId: formData.couponCode || 'N/A',
+          phoneNumber: formData.phone
+        })
       });
 
       // 2. Construct WhatsApp message

@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, doc, deleteDoc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { databases, APPWRITE_CONFIG, Query, account } from '../lib/appwrite';
 import { Chat } from '../types';
-import { Plus, MessageSquare, MoreVertical, Trash, Edit2, ChevronLeft, ChevronRight, LayoutDashboard, X } from 'lucide-react';
+import { Plus, MessageSquare, MoreVertical, Trash, Edit2, ChevronLeft, ChevronRight, LayoutDashboard, X, Phone } from 'lucide-react';
 import { format, isToday, isYesterday, isAfter, subDays } from 'date-fns';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarProps {
+  userId: string;
   currentChatId: string | null;
   onSelectChat: (chatId: string) => void;
   onNewChat: () => void;
@@ -17,42 +16,35 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmin, onOpenAdmin, onClose }: SidebarProps) {
+export default function Sidebar({ userId, currentChatId, onSelectChat, onNewChat, isAdmin, onOpenAdmin, onClose }: SidebarProps) {
   const [chats, setChats] = useState<Chat[]>([]);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const fetchChats = async () => {
+    try {
+      const response = await fetch(`/api/chats?userId=${userId}`);
+      const documents = await response.json();
+      setChats(documents.map((doc: any) => ({ 
+        id: doc.$id, 
+        userId: doc.userId,
+        title: doc.title,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt
+      } as Chat)));
+    } catch (err) {
+      console.error('Error fetching chats:', err);
+    }
+  };
+
   useEffect(() => {
-    let unsubscribeSnapshot: (() => void) | null = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (unsubscribeSnapshot) {
-        unsubscribeSnapshot();
-        unsubscribeSnapshot = null;
-      }
-
-      if (!user) {
-        setChats([]);
-        return;
-      }
-
-      const q = query(
-        collection(db, 'chats'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc')
-      );
-
-      unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-        setChats(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat)));
-      });
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeSnapshot) unsubscribeSnapshot();
-    };
+    fetchChats();
+    
+    // Optional: Set up interval to refresh chats or use Realtime
+    const interval = setInterval(fetchChats, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
   }, []);
 
   const groupChats = () => {
@@ -74,13 +66,29 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
 
   const handleRename = async (id: string) => {
     if (!editTitle.trim()) return;
-    await updateDoc(doc(db, 'chats', id), { title: editTitle });
-    setEditingChatId(null);
+    try {
+      await fetch(`/api/chats/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editTitle })
+      });
+      setEditingChatId(null);
+      fetchChats();
+    } catch (err) {
+      console.error('Rename error:', err);
+    }
   };
 
   const handleDelete = async (id: string) => {
-    await deleteDoc(doc(db, 'chats', id));
-    setDeleteConfirmId(null);
+    try {
+      await fetch(`/api/chats/${id}`, {
+        method: 'DELETE'
+      });
+      setDeleteConfirmId(null);
+      fetchChats();
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   };
 
   const groups = groupChats();
@@ -102,20 +110,22 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className="relative w-[85%] max-w-[320px] h-full bg-surface border-r border-border flex flex-col shadow-2xl"
       >
-        <div className="p-fluid flex items-center justify-between border-b border-border">
-          <span className="font-bold text-xl text-primary">Chat History</span>
-          <button onClick={onClose} className="p-2 hover:bg-surface-hover rounded-full transition-colors">
-            <X size={20} />
+        <div className="p-6 flex items-center justify-between">
+          <span className="font-bold text-2xl tracking-tight text-white">History</span>
+          <button onClick={onClose} className="p-2.5 hover:bg-surface-hover rounded-xl transition-colors text-text-muted">
+            <X size={22} />
           </button>
         </div>
 
-        <button
-          onClick={onNewChat}
-          className="m-fluid flex items-center gap-2 bg-primary hover:bg-blue-600 text-white rounded-xl p-4 font-bold transition-all shadow-lg shadow-primary/20"
-        >
-          <Plus size={20} />
-          <span>New Chat</span>
-        </button>
+        <div className="px-4 mb-6">
+          <button
+            onClick={onNewChat}
+            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-black rounded-2xl py-4 font-bold transition-all shadow-xl shadow-primary/10 active:scale-95"
+          >
+            <Plus size={20} />
+            <span>New Chat</span>
+          </button>
+        </div>
 
         <div className="flex-1 overflow-y-auto px-2 pb-4">
           {Object.entries(groups).map(([label, groupChats]) => (
@@ -228,13 +238,13 @@ export default function Sidebar({ currentChatId, onSelectChat, onNewChat, isAdmi
           ))}
         </div>
 
-        <div className="p-fluid border-t border-border bg-surface/50 space-y-2">
+        <div className="p-4 border-t border-border bg-surface/50 space-y-2">
           <button
             onClick={() => window.location.href = 'tel:9475954278'}
             className="w-full flex items-center justify-center gap-2 bg-surface-hover hover:bg-border text-text-muted rounded-xl p-3 font-bold transition-all text-sm"
           >
-            <Plus size={18} className="rotate-45" />
-            <span>Customer Care</span>
+            <Phone size={18} />
+            <span>Support</span>
           </button>
           
           {isAdmin && (

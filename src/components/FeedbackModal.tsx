@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import { Star, X, Send, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { databases, account, APPWRITE_CONFIG } from '../lib/appwrite';
+import { ID } from 'appwrite';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 
+import { UserProfile } from '../types';
+
 interface FeedbackModalProps {
+  user: UserProfile;
   onClose: () => void;
 }
 
-export default function FeedbackModal({ onClose }: FeedbackModalProps) {
+export default function FeedbackModal({ user, onClose }: FeedbackModalProps) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState('');
@@ -23,19 +26,17 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
       return;
     }
 
-    if (!auth.currentUser) {
-      toast.error('You must be logged in to give feedback');
-      return;
-    }
-
-    setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'feedbacks'), {
-        userId: auth.currentUser.uid,
-        userEmail: auth.currentUser.email,
-        rating,
-        comment,
-        createdAt: serverTimestamp()
+      setIsSubmitting(true);
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          userEmail: user.email,
+          rating,
+          comment
+        })
       });
       toast.success('Thank you for your feedback!');
       onClose();
@@ -74,7 +75,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
 
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold mb-2">Share Your Feedback</h2>
-          <p className="text-sm text-text-muted">How would you rate your experience with Dibakar AI?</p>
+          <p className="text-sm text-text-muted">How would you rate your experience with Dibakar?</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

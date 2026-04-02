@@ -1,30 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --color-background: #0f1115;
-  --color-surface: #1a1d23;
-  --color-surface-hover: #252a33;
-  --color-border: #2e343f;
-  --color-primary: #3b82f6;
-  --color-secondary: #60a5fa;
-  --color-text-muted: #9ca3af;
+  --color-background: #050a08;
+  --color-surface: #0a120f;
+  --color-surface-hover: #121d19;
+  --color-border: rgba(0, 255, 150, 0.1);
+  --color-primary: #00ff96;
+  --color-secondary: #00d1ff;
+  --color-text-muted: #80908a;
   --color-text: #ffffff;
-  --color-accent: #2563eb;
-  --color-accent-soft: rgba(37, 99, 235, 0.1);
+  --color-accent: #00ff96;
+  --color-accent-soft: rgba(0, 255, 150, 0.1);
   color-scheme: dark;
 }
 
 .light {
-  --color-background: #f0f7ff;
+  --color-background: #f0fdf4;
   --color-surface: #ffffff;
-  --color-surface-hover: #e0f2fe;
-  --color-border: #bae6fd;
-  --color-primary: #0284c7;
+  --color-surface-hover: #f0fdf4;
+  --color-border: #dcfce7;
+  --color-primary: #16a34a;
   --color-secondary: #0ea5e9;
-  --color-text-muted: #0369a1;
-  --color-text: #0c4a6e;
-  --color-accent: #0284c7;
-  --color-accent-soft: rgba(2, 132, 199, 0.1);
+  --color-text-muted: #166534;
+  --color-text: #064e3b;
+  --color-accent: #16a34a;
+  --color-accent-soft: rgba(22, 163, 74, 0.1);
   color-scheme: light;
 }
 
@@ -61,6 +61,11 @@
     @apply overflow-hidden;
     position: fixed;
     width: 100%;
+    background-image: 
+      radial-gradient(circle at 50% 50%, rgba(0, 255, 150, 0.05) 0%, transparent 50%),
+      linear-gradient(var(--color-border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--color-border) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
   }
 
   /* Allow text selection in messages and inputs */

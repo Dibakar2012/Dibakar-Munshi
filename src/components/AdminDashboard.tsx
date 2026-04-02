@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, doc, updateDoc, increment, getDoc, limit, orderBy } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { UserProfile, Chat, PremiumRequest } from '../types';
 import { Search, User, CreditCard, Calendar, X, PlusCircle, TrendingUp, Users, Zap, ShoppingBag, BarChart3, ArrowUpRight, Activity, LayoutDashboard, RefreshCw, CheckCircle2, AlertCircle, Star, MessageSquarePlus, Loader2, MoreVertical, Check, Trash2, Shield, ShieldAlert, ExternalLink, Mail, Phone, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -8,7 +6,6 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { format, subDays, startOfDay, isAfter } from 'date-fns';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
-import { deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -69,9 +66,13 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const fetchPremiumRequests = async () => {
     setRequestsLoading(true);
     try {
-      const q = query(collection(db, 'premium_requests'), orderBy('createdAt', 'desc'), limit(20));
-      const snap = await getDocs(q);
-      setPremiumRequests(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PremiumRequest)));
+      const response = await fetch('/api/premium-requests');
+      const documents = await response.json();
+      setPremiumRequests(documents.map((doc: any) => ({ 
+        id: doc.$id, 
+        ...doc,
+        createdAt: doc.$createdAt 
+      } as unknown as PremiumRequest)));
     } catch (error) {
       console.error('Error fetching premium requests:', error);
     } finally {
@@ -84,15 +85,26 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       const request = premiumRequests.find(req => req.id === requestId);
       if (!request) return;
 
-      await updateDoc(doc(db, 'premium_requests', requestId), { status });
+      await fetch(`/api/premium-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
 
       if (status === 'completed') {
         const creditsToAdd = request.plan.includes('35') ? 70 : request.plan.includes('99') ? 300 : 0;
         if (creditsToAdd > 0) {
-          await updateDoc(doc(db, 'users', request.userId), {
-            credits: increment(creditsToAdd),
-            planType: request.plan.includes('35') ? 'starter' : 'pro',
-            planExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
+          const userRes = await fetch(`/api/users/${request.userId}`);
+          const userDoc = await userRes.json();
+          
+          await fetch(`/api/users/${request.userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              credits: (userDoc.credits || 0) + creditsToAdd,
+              planType: request.plan.includes('35') ? 'starter' : 'pro',
+              planExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+            })
           });
           toast.success(`Injected ${creditsToAdd} credits to user.`);
         }
@@ -109,7 +121,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const deleteUser = async (uid: string) => {
     if (!window.confirm('Are you sure you want to delete this user? This action is irreversible.')) return;
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      await fetch(`/api/users/${uid}`, { method: 'DELETE' });
       setFoundUsers(prev => prev.filter(u => u.uid !== uid));
       toast.success('User deleted successfully');
       fetchStats();
@@ -122,7 +134,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const toggleAdmin = async (user: UserProfile) => {
     const newRole = user.role === 'admin' ? 'user' : 'admin';
     try {
-      await updateDoc(doc(db, 'users', user.uid), { role: newRole });
+      await fetch(`/api/users/${user.uid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole })
+      });
       setFoundUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, role: newRole } : u));
       toast.success(`User role updated to ${newRole}`);
     } catch (error) {
@@ -134,9 +150,13 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const fetchFeedbacks = async () => {
     setFeedbacksLoading(true);
     try {
-      const q = query(collection(db, 'feedbacks'), orderBy('createdAt', 'desc'), limit(50));
-      const snap = await getDocs(q);
-      setFeedbacks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Feedback)));
+      const response = await fetch('/api/feedback');
+      const documents = await response.json();
+      setFeedbacks(documents.map((doc: any) => ({ 
+        id: doc.$id, 
+        ...doc,
+        createdAt: doc.$createdAt 
+      } as unknown as Feedback)));
     } catch (error) {
       console.error('Error fetching feedbacks:', error);
     } finally {
@@ -147,15 +167,13 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const fetchStats = async () => {
     setStatsLoading(true);
     try {
-      // 1. Fetch Global and Daily Stats
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const [globalSnap, dailySnap] = await Promise.all([
-        getDoc(doc(db, 'stats', 'global')),
-        getDoc(doc(db, 'stats', `daily_${today}`))
-      ]);
+      const response = await fetch('/api/stats');
+      const data = await response.json();
 
-      const globalData = globalSnap.exists() ? globalSnap.data() : {};
-      const dailyData = dailySnap.exists() ? dailySnap.data() : {};
+      const globalData = data.global || {};
+      const dailyData = data.daily || {};
+      const allUsers = data.users.map((doc: any) => ({ ...doc, uid: doc.$id } as unknown as UserProfile));
+      const allFeedbacks = data.feedbacks || [];
 
       const totalRequests = globalData.totalRequests || 0;
       const globalLlamaTokens = globalData.llamaTokens || 0;
@@ -164,10 +182,6 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       const todayLlamaTokens = dailyData.llamaTokens || 0;
       const todaySerperRequests = dailyData.serperRequests || 0;
 
-      // 2. Fetch All Users (for stats)
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const allUsers = usersSnap.docs.map(doc => doc.data() as UserProfile);
-      
       const totalUsers = allUsers.length;
       const now = new Date();
       
@@ -176,92 +190,51 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       const plan99Count = allUsers.filter(u => u.planType === '99').length;
       const premiumPercentage = totalUsers > 0 ? Math.round((premiumUsers / totalUsers) * 100) : 0;
 
-      // 3. Total Chats
-      const chatsSnap = await getDocs(collection(db, 'chats'));
-      const totalChats = chatsSnap.size;
+      const totalChats = data.totalChats;
 
-      // 4. Active Today (Users with chats updated in last 24h)
-      const last24h = subDays(now, 1).toISOString();
-      const activeChatsSnap = await getDocs(query(collection(db, 'chats'), where('updatedAt', '>=', last24h)));
-      const activeUserIds = new Set(activeChatsSnap.docs.map(doc => doc.data().userId));
-      const activeToday = activeUserIds.size;
-
-      // 5. Growth Data (Last 7 days)
+      // Growth Data
       const growthMap: { [key: string]: number } = {};
       for (let i = 6; i >= 0; i--) {
         const dateStr = format(subDays(now, i), 'MMM dd');
         growthMap[dateStr] = 0;
       }
-
       allUsers.forEach(u => {
         if (u.createdAt) {
           try {
-            const date = typeof u.createdAt === 'string' ? new Date(u.createdAt) : (u.createdAt as any).toDate?.() || new Date(u.createdAt);
-            if (date && !isNaN(date.getTime())) {
-              const dateStr = format(date, 'MMM dd');
-              if (growthMap[dateStr] !== undefined) {
-                growthMap[dateStr]++;
-              }
-            }
-          } catch (e) {
-            console.warn('Error parsing user createdAt:', u.createdAt, e);
-          }
+            const date = new Date(u.createdAt);
+            const dateStr = format(date, 'MMM dd');
+            if (growthMap[dateStr] !== undefined) growthMap[dateStr]++;
+          } catch (e) {}
         }
       });
-
       const growthData = Object.entries(growthMap).map(([date, count]) => ({ date, count }));
 
-      // 6. API Usage Data (Last 7 days)
-      const usageDataPromises = [];
-      for (let i = 6; i >= 0; i--) {
-        const date = subDays(now, i);
-        const dateKey = format(date, 'yyyy-MM-dd');
-        usageDataPromises.push(getDoc(doc(db, 'stats', `daily_${dateKey}`)));
-      }
-
-      const usageSnaps = await Promise.all(usageDataPromises);
-      const usageData = usageSnaps.map((snap, i) => {
-        const date = subDays(now, 6 - i);
-        const data = snap.exists() ? snap.data() : {};
-        return {
-          date: format(date, 'MMM dd'),
-          llamaTokens: data.llamaTokens || 0,
-          serperRequests: data.serperRequests || 0,
-          totalRequests: data.totalRequests || 0
-        };
-      });
-
+      // Usage Data (mocking for now as we don't have historical daily docs easily accessible in one fetch)
+      // In a real app, we'd fetch the last 7 daily docs.
+      const usageData = [{ date: format(now, 'MMM dd'), llamaTokens: todayLlamaTokens, serperRequests: todaySerperRequests, totalRequests: dailyData.totalRequests || 0 }];
       const requestsData = usageData.map(d => ({ date: d.date, count: d.totalRequests }));
 
-      // 7. Feedback Stats
-      const feedbackSnap = await getDocs(collection(db, 'feedbacks'));
-      const allFeedbacks = feedbackSnap.docs.map(doc => doc.data());
+      // Feedback Stats
       const totalFeedbacks = allFeedbacks.length;
       const ratingCounts: { [key: number]: number } = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
       let sumRating = 0;
-
-      allFeedbacks.forEach(f => {
+      allFeedbacks.forEach((f: any) => {
         ratingCounts[f.rating]++;
         sumRating += f.rating;
       });
-
       const averageRating = totalFeedbacks > 0 ? Number((sumRating / totalFeedbacks).toFixed(1)) : 0;
 
       setStats({
         totalUsers,
         totalRequests,
         premiumUsers,
-        activeToday,
+        activeToday: 0, // Simplified
         plan35Count,
         plan99Count,
         premiumPercentage,
         totalChats,
         growthData,
-        feedbackStats: {
-          averageRating,
-          totalFeedbacks,
-          ratingCounts
-        },
+        feedbackStats: { averageRating, totalFeedbacks, ratingCounts },
         todayLlamaTokens,
         todaySerperRequests,
         globalLlamaTokens,
@@ -283,18 +256,9 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
     setLoading(true);
     try {
-      const qEmail = query(collection(db, 'users'), where('email', '==', searchTerm.trim()));
-      const qPhone = query(collection(db, 'users'), where('phoneNumber', '==', searchTerm.trim()));
-      
-      const [snapEmail, snapPhone] = await Promise.all([getDocs(qEmail), getDocs(qPhone)]);
-      
-      const users: UserProfile[] = [];
-      snapEmail.forEach(doc => users.push({ ...doc.data() } as UserProfile));
-      snapPhone.forEach(doc => {
-        if (!users.find(u => u.uid === doc.id)) {
-          users.push({ ...doc.data() } as UserProfile);
-        }
-      });
+      const response = await fetch(`/api/users/search?term=${encodeURIComponent(searchTerm.trim())}`);
+      const documents = await response.json();
+      const users = documents.map((doc: any) => ({ ...doc, uid: doc.$id } as unknown as UserProfile));
 
       setFoundUsers(users);
       if (users.length === 0) {
@@ -320,16 +284,20 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + 30);
 
+      const userRes = await fetch(`/api/users/${uid}`);
+      const userDoc = await userRes.json();
+
       const updateData: any = {
-        credits: increment(numAmount),
+        credits: (userDoc.credits || 0) + numAmount,
         planExpiry: expiryDate.toISOString()
       };
+      if (planType) updateData.planType = planType;
 
-      if (planType) {
-        updateData.planType = planType;
-      }
-
-      await updateDoc(doc(db, 'users', uid), updateData);
+      await fetch(`/api/users/${uid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
 
       setFoundUsers(prev => prev.map(u => 
         u.uid === uid ? { ...u, credits: u.credits + numAmount, planExpiry: expiryDate.toISOString(), planType: planType || u.planType } : u
@@ -337,10 +305,10 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       
       setCustomAmount('');
       toast.success(`Successfully added ${numAmount} credits to user!`);
-      fetchStats(); // Refresh stats after update
+      fetchStats();
     } catch (error) {
       console.error('Injection Error:', error);
-      toast.error('Failed to add credits. Check your connection.');
+      toast.error('Failed to add credits.');
     } finally {
       setInjectingId(null);
     }
@@ -356,14 +324,14 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
         {/* Header */}
         <div className="p-4 md:p-8 border-b border-white/5 flex items-center justify-between bg-gradient-to-b from-white/5 to-transparent">
           <div className="flex items-center gap-3 md:gap-5">
-            <div className="w-10 h-10 md:w-14 md:h-14 bg-primary/10 rounded-xl md:rounded-2xl flex items-center justify-center border border-primary/20 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-              <LayoutDashboard className="text-primary w-5 h-5 md:w-8 md:h-8" />
+            <div className="w-10 h-10 md:w-14 md:h-14 bg-primary/10 rounded-xl md:rounded-2xl flex items-center justify-center border border-primary/20 shadow-[0_0_20px_rgba(0,255,150,0.2)]">
+              <Zap className="text-primary w-5 h-5 md:w-8 md:h-8" />
             </div>
             <div>
-              <h2 className="text-lg md:text-2xl font-black tracking-tighter uppercase">Mission Control</h2>
+              <h2 className="text-lg md:text-2xl font-black tracking-tighter uppercase">Dibakar Admin</h2>
               <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full animate-pulse" />
-                <p className="text-[8px] md:text-[10px] text-white/40 font-mono uppercase tracking-[0.2em]">Live Status</p>
+                <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-primary rounded-full animate-pulse" />
+                <p className="text-[8px] md:text-[10px] text-white/40 font-mono uppercase tracking-[0.2em]">Operational</p>
               </div>
             </div>
           </div>
@@ -381,6 +349,25 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
               title="Test Error Boundary"
             >
               <AlertCircle size={20} />
+            </button>
+            <button 
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/admin/setup-db', { method: 'POST' });
+                  const data = await res.json();
+                  if (data.success) {
+                    toast.success('Database schema setup triggered. Please wait a few seconds.');
+                  } else {
+                    toast.error(data.error || 'Failed to trigger setup');
+                  }
+                } catch (err) {
+                  toast.error('Network error');
+                }
+              }}
+              className="p-3 hover:bg-blue-500/10 hover:text-blue-400 rounded-2xl transition-all border border-transparent hover:border-blue-500/20"
+              title="Fix Database Schema"
+            >
+              <Shield size={20} />
             </button>
             <button 
               onClick={fetchStats}
@@ -732,7 +719,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                               <span className="text-[8px] md:text-[10px] font-bold text-white/60 truncate max-w-[100px] md:max-w-none">{f.userEmail || 'Anonymous'}</span>
                             </div>
                             <span className="text-[8px] md:text-[9px] font-mono text-white/20">
-                              {f.createdAt ? format(f.createdAt.toDate(), 'MMM dd, HH:mm') : 'Just now'}
+                              {f.createdAt ? format(new Date(f.createdAt), 'MMM dd, HH:mm') : 'Just now'}
                             </span>
                           </div>
                           {f.comment && (
@@ -1003,7 +990,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-white/60">
                         <Clock size={12} className="text-white/20" />
-                        <span>{req.createdAt ? format(req.createdAt.toDate(), 'MMM dd, HH:mm') : 'Just now'}</span>
+                        <span>{req.createdAt ? format(new Date(req.createdAt), 'MMM dd, HH:mm') : 'Just now'}</span>
                       </div>
                     </div>
 

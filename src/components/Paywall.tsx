@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CreditCard, Zap, CheckCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import PremiumRequestModal from './PremiumRequestModal';
-import { auth } from '../lib/firebase';
+import { UserProfile } from '../types';
 
 interface PaywallProps {
   onClose?: () => void;
+  user: UserProfile;
 }
 
-export default function Paywall({ onClose }: PaywallProps) {
+export default function Paywall({ onClose, user }: PaywallProps) {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  const userEmail = auth.currentUser?.email;
 
   const handlePay = () => {
     setIsRequestModalOpen(true);
@@ -36,7 +36,7 @@ export default function Paywall({ onClose }: PaywallProps) {
         </div>
         <h2 className="text-2xl md:text-3xl font-bold mb-3 tracking-tight">Subscription Required</h2>
         <p className="text-sm text-text-muted mb-8 max-w-md mx-auto">
-          You've used all your free credits. Upgrade to a premium plan to continue using Dibakar AI.
+          You've used all your free credits. Upgrade to a premium plan to continue using Dibakar.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
@@ -88,7 +88,7 @@ export default function Paywall({ onClose }: PaywallProps) {
           <PremiumRequestModal 
             isOpen={isRequestModalOpen} 
             onClose={() => setIsRequestModalOpen(false)} 
-            userEmail={userEmail}
+            user={user}
           />
         )}
       </AnimatePresence>

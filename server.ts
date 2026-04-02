@@ -6,9 +6,9 @@ import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import cors from "cors";
-import { initializeApp, getApps } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
+import { format } from "date-fns";
+import { Client, Databases, ID, Query } from "node-appwrite";
 
 dotenv.config();
 
@@ -27,6 +27,153 @@ const startServer = async () => {
   console.log("Starting Dibakar AI Server...");
   const PORT = process.env.PORT || 3000;
 
+  // Appwrite Setup
+  const appwriteClient = new Client()
+    .setEndpoint(process.env.APPWRITE_ENDPOINT || process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1")
+    .setProject(process.env.APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID || "")
+    .setKey(process.env.APPWRITE_API_KEY || "");
+
+  const appwriteDatabases = new Databases(appwriteClient);
+
+  const APPWRITE_CONFIG = {
+    databaseId: process.env.APPWRITE_DATABASE_ID || process.env.VITE_APPWRITE_DATABASE_ID || "main",
+    collections: {
+      users: process.env.APPWRITE_USERS_COLLECTION_ID || process.env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
+      chats: process.env.APPWRITE_CHATS_COLLECTION_ID || process.env.VITE_APPWRITE_CHATS_COLLECTION_ID || "chats",
+      messages: process.env.APPWRITE_MESSAGES_COLLECTION_ID || process.env.VITE_APPWRITE_MESSAGES_COLLECTION_ID || "messages",
+      premiumRequests: process.env.APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || process.env.VITE_APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || "premium_requests",
+      stats: process.env.APPWRITE_STATS_COLLECTION_ID || process.env.VITE_APPWRITE_STATS_COLLECTION_ID || "stats",
+      feedback: process.env.APPWRITE_FEEDBACK_COLLECTION_ID || process.env.VITE_APPWRITE_FEEDBACK_COLLECTION_ID || "feedback",
+    }
+  };
+
+  // Auto-Initialize Appwrite Schema
+  const initializeAppwriteSchema = async () => {
+    console.log("Checking Appwrite Schema...");
+    const dbId = APPWRITE_CONFIG.databaseId;
+    
+    const schema = [
+      {
+        collectionId: APPWRITE_CONFIG.collections.users,
+        attributes: [
+          { key: "name", type: "string", size: 255, required: false },
+          { key: "email", type: "string", size: 255, required: false },
+          { key: "role", type: "string", size: 50, required: false },
+          { key: "credits", type: "integer", required: false },
+          { key: "createdAt", type: "string", size: 50, required: false },
+        ]
+      },
+      {
+        collectionId: APPWRITE_CONFIG.collections.chats,
+        attributes: [
+          { key: "userId", type: "string", size: 255, required: true },
+          { key: "title", type: "string", size: 255, required: true },
+          { key: "createdAt", type: "string", size: 50, required: true },
+          { key: "updatedAt", type: "string", size: 50, required: true },
+        ]
+      },
+      {
+        collectionId: APPWRITE_CONFIG.collections.messages,
+        attributes: [
+          { key: "chatId", type: "string", size: 255, required: true },
+          { key: "role", type: "string", size: 50, required: true },
+          { key: "content", type: "string", size: 65535, required: true },
+          { key: "sources", type: "string", size: 65535, required: false },
+          { key: "createdAt", type: "string", size: 50, required: true },
+        ]
+      },
+      {
+        collectionId: APPWRITE_CONFIG.collections.feedback,
+        attributes: [
+          { key: "userId", type: "string", size: 255, required: true },
+          { key: "userEmail", type: "string", size: 255, required: true },
+          { key: "rating", type: "integer", required: true },
+          { key: "comment", type: "string", size: 1000, required: false },
+          { key: "createdAt", type: "string", size: 50, required: true },
+        ]
+      },
+      {
+        collectionId: APPWRITE_CONFIG.collections.premiumRequests,
+        attributes: [
+          { key: "userId", type: "string", size: 255, required: true },
+          { key: "userEmail", type: "string", size: 255, required: true },
+          { key: "userName", type: "string", size: 255, required: true },
+          { key: "plan", type: "string", size: 50, required: true },
+          { key: "message", type: "string", size: 1000, required: false },
+          { key: "status", type: "string", size: 50, required: true },
+          { key: "createdAt", type: "string", size: 50, required: true },
+        ]
+      },
+      {
+        collectionId: APPWRITE_CONFIG.collections.stats,
+        attributes: [
+          { key: "totalRequests", type: "integer", required: false },
+          { key: "llamaTokens", type: "integer", required: false },
+          { key: "serperRequests", type: "integer", required: false },
+          { key: "lastUpdated", type: "string", size: 50, required: false },
+          { key: "date", type: "string", size: 50, required: false },
+        ]
+      }
+    ];
+
+    for (const col of schema) {
+      try {
+        console.log(`Checking collection: ${col.collectionId}`);
+        try {
+          await appwriteDatabases.getCollection(dbId, col.collectionId);
+        } catch (getColErr: any) {
+          if (getColErr.code === 404) {
+            console.log(`Collection ${col.collectionId} missing. Creating...`);
+            await appwriteDatabases.createCollection(dbId, col.collectionId, col.collectionId);
+            // Wait for Appwrite to create the collection
+            await new Promise(r => setTimeout(r, 2000));
+          } else {
+            throw getColErr;
+          }
+        }
+
+        const existingAttrs = await appwriteDatabases.listAttributes(dbId, col.collectionId);
+        const existingKeys = existingAttrs.attributes.map((a: any) => a.key);
+
+        for (const attr of col.attributes) {
+          if (!existingKeys.includes(attr.key)) {
+            console.log(`Creating attribute ${attr.key} in ${col.collectionId}...`);
+            try {
+              if (attr.type === "string") {
+                await appwriteDatabases.createStringAttribute(dbId, col.collectionId, attr.key, attr.size || 255, attr.required);
+              } else if (attr.type === "integer") {
+                await appwriteDatabases.createIntegerAttribute(dbId, col.collectionId, attr.key, attr.required);
+              }
+              // Wait a bit for Appwrite to process
+              await new Promise(r => setTimeout(r, 1000));
+            } catch (attrErr: any) {
+              console.error(`Failed to create attribute ${attr.key}:`, attrErr.message);
+            }
+          }
+        }
+      } catch (colErr: any) {
+        console.error(`Error checking collection ${col.collectionId}:`, colErr.message);
+      }
+    }
+    console.log("Appwrite Schema Check Complete.");
+  };
+
+  // Run schema initialization
+  if (process.env.APPWRITE_API_KEY) {
+    initializeAppwriteSchema().catch(err => console.error("Schema Init Error:", err));
+  }
+
+  // Check for critical environment variables
+  const missingVars = [];
+  if (!process.env.APPWRITE_API_KEY) missingVars.push('APPWRITE_API_KEY');
+  if (!process.env.APPWRITE_DATABASE_ID && !process.env.VITE_APPWRITE_DATABASE_ID) missingVars.push('APPWRITE_DATABASE_ID or VITE_APPWRITE_DATABASE_ID');
+  if (!process.env.APPWRITE_USERS_COLLECTION_ID && !process.env.VITE_APPWRITE_USERS_COLLECTION_ID) missingVars.push('APPWRITE_USERS_COLLECTION_ID or VITE_APPWRITE_USERS_COLLECTION_ID');
+  if (!process.env.APPWRITE_PROJECT_ID && !process.env.VITE_APPWRITE_PROJECT_ID) missingVars.push('APPWRITE_PROJECT_ID or VITE_APPWRITE_PROJECT_ID');
+  
+  if (missingVars.length > 0) {
+    console.error(`CRITICAL: Missing environment variables: ${missingVars.join(', ')}`);
+  }
+
   // Initialize Groq inside startServer to use latest env vars
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -34,71 +181,6 @@ const startServer = async () => {
   console.log("Environment Check:");
   console.log("- GROQ_API_KEY present:", !!GROQ_API_KEY);
   console.log("- SERPER_API_KEY present:", !!SERPER_API_KEY);
-  console.log("- GOOGLE_CLOUD_PROJECT:", process.env.GOOGLE_CLOUD_PROJECT);
-  console.log("- FIREBASE_PROJECT_ID:", process.env.FIREBASE_PROJECT_ID);
-  console.log("- PORT:", process.env.PORT);
-  
-  let db: any = null;
-
-  try {
-    console.log("Initializing Firebase Admin...");
-    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-    if (fs.existsSync(configPath)) {
-      try {
-        const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-        const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId;
-        const dbId = firebaseConfig.firestoreDatabaseId;
-        
-        console.log(`[Firebase] Config Project ID: ${projectId}`);
-        console.log(`[Firebase] Target Database ID: ${dbId || '(default)'}`);
-        console.log(`[Firebase] NODE_ENV: ${process.env.NODE_ENV}`);
-        
-        // Use the default app if possible, otherwise use a named app
-        const adminApp = getApps().length === 0 
-          ? initializeApp({ projectId: projectId }) 
-          : getApps()[0];
-        
-        console.log(`[Firebase] Admin SDK initialized with project: ${projectId}`);
-        
-        try {
-          // Try initializing with the specific database ID from config
-          if (dbId && dbId !== "(default)") {
-            db = getFirestore(adminApp, dbId);
-            console.log(`[Firebase] Firestore initialized with database: ${dbId}`);
-          } else {
-            db = getFirestore(adminApp);
-            console.log("[Firebase] Firestore initialized with default database");
-          }
-          
-          // Test connection/permissions gracefully without blocking or crashing
-          // We use a simple get instead of set to avoid write permission issues during boot
-          const testRef = db.collection('test_connection').doc('server_boot');
-          testRef.get().then(() => {
-            console.log("[Firebase] Connection test successful (read)");
-          }).catch((err: any) => {
-            console.warn("[Firebase] Optional connection test failed (read):", err.message);
-          });
-        } catch (dbInitErr: any) {
-          console.error("[Firebase] Failed to initialize Firestore or connection test failed:", dbInitErr.message);
-          if (dbInitErr.message.includes('PERMISSION_DENIED') || dbInitErr.message.includes('NOT_FOUND')) {
-            console.error(`[Firebase] CRITICAL: ${dbInitErr.message.includes('PERMISSION_DENIED') ? 'Permission denied' : 'Database not found'}. Check IAM roles or database ID.`);
-            // Fallback to default database if named one fails
-            if (dbId && dbId !== "(default)") {
-              console.log("[Firebase] Attempting fallback to default database...");
-              db = getFirestore(adminApp);
-            }
-          }
-        }
-      } catch (jsonErr) {
-        console.error("Failed to parse firebase-applet-config.json:", jsonErr);
-      }
-    } else {
-      console.warn("firebase-applet-config.json not found. Stats tracking will be disabled.");
-    }
-  } catch (err) {
-    console.error("Failed to initialize Firebase Admin:", err);
-  }
-
   app.use(cors());
   app.use(express.json());
 
@@ -111,30 +193,18 @@ const startServer = async () => {
     },
   });
 
-  // Test endpoint for Firebase
-  app.get("/api/test-firebase", async (req, res) => {
-    if (!db) {
-      return res.status(500).json({ error: "Firebase Admin not initialized" });
-    }
-
-    try {
-      const testRef = db.collection('test_connection').doc('manual_test');
-      await testRef.set({
-        timestamp: FieldValue.serverTimestamp(),
-        message: "Manual test from /api/test-firebase",
-        userAgent: req.headers['user-agent']
-      }, { merge: true });
-      
-      res.json({ success: true, message: "Firestore write successful" });
-    } catch (err: any) {
-      console.error("Manual Firebase test failed:", err.message);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   // Keep-alive endpoint for Render
   app.get("/api/ping", (req, res) => {
     res.json({ status: "alive", timestamp: new Date().toISOString() });
+  });
+
+  app.post("/api/admin/setup-db", async (req, res) => {
+    try {
+      await initializeAppwriteSchema();
+      res.json({ success: true, message: "Database schema setup triggered successfully." });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // API routes
@@ -187,21 +257,24 @@ const startServer = async () => {
       // 3. Log the request
       console.log(`[Premium Request] Success: ${name} (${email}) for plan ${plan}`);
 
-      // 4. Save to Firestore for Admin Dashboard
-      if (db) {
-        try {
-          await db.collection('premium_requests').add({
+      // 4. Save to Appwrite for Admin Dashboard
+      try {
+        await appwriteDatabases.createDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.premiumRequests,
+          ID.unique(),
+          {
             name,
             email,
             phone,
             plan,
             status: 'pending',
-            createdAt: FieldValue.serverTimestamp()
-          });
-          console.log("Premium request saved to Firestore");
-        } catch (dbErr) {
-          console.error("Failed to save premium request to Firestore:", dbErr);
-        }
+            createdAt: new Date().toISOString()
+          }
+        );
+        console.log("Premium request saved to Appwrite");
+      } catch (dbErr) {
+        console.error("Failed to save premium request to Appwrite:", dbErr);
       }
 
       if (process.env.GMAIL_PASS) {
@@ -231,11 +304,564 @@ const startServer = async () => {
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 
-      firebase: !!db, 
+      appwrite: true, 
       hasKeys: !!(GROQ_API_KEY && SERPER_API_KEY),
       env: process.env.NODE_ENV,
       uptime: process.uptime()
     });
+  });
+
+  // User Sync Route
+  app.post("/api/user/sync", async (req, res) => {
+    const { uid, email, name } = req.body;
+    if (!uid) return res.status(400).json({ error: "UID is required" });
+
+    try {
+      let userProfile;
+      try {
+        userProfile = await appwriteDatabases.getDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.users,
+          uid
+        );
+      } catch (err: any) {
+        if (err.code === 404) {
+          const isAdminEmail = 
+            email?.toLowerCase() === "munshidipa62@gmail.com" || 
+            email?.toLowerCase() === "munshidipa@gmail.com" || 
+            email?.toLowerCase() === "dibakar61601@gmail.com";
+
+          const userData: any = {
+            name: name || 'User',
+            email: email || '',
+            role: isAdminEmail ? 'admin' : 'user',
+            credits: isAdminEmail ? 999999 : 10,
+            createdAt: new Date().toISOString()
+          };
+
+          let success = false;
+          let retryCount = 0;
+          const maxRetries = Object.keys(userData).length;
+
+          while (!success && retryCount <= maxRetries) {
+            try {
+              userProfile = await appwriteDatabases.createDocument(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.users,
+                uid,
+                userData
+              );
+              success = true;
+            } catch (createErr: any) {
+              // Self-healing: If "Unknown attribute" error occurs, try to remove the offending field
+              if (createErr.message.includes("Unknown attribute") && retryCount < maxRetries) {
+                const attr = createErr.message.split('"')[1];
+                if (attr && userData[attr] !== undefined) {
+                  console.warn(`Self-healing: Removing unknown attribute "${attr}" and retrying...`);
+                  delete userData[attr];
+                  retryCount++;
+                  continue;
+                }
+              }
+              
+              // If we reach here and the error is "document data is missing", 
+              // it means the collection has NO attributes defined at all.
+              // We return a "Virtual Profile" so the user isn't blocked, but warn them.
+              if (createErr.message.includes("document data is missing")) {
+                console.error("Appwrite Error: 'users' collection has no attributes. Returning virtual profile.");
+                userProfile = {
+                  $id: uid,
+                  ...userData,
+                  isVirtual: true,
+                  warning: "Appwrite Schema Error: Your 'users' collection has NO attributes defined. Data will not be saved until you add attributes in the Appwrite Console."
+                };
+                success = true;
+                break;
+              }
+              
+              throw createErr;
+            }
+          }
+        } else {
+          throw err;
+        }
+      }
+      res.json(userProfile);
+      } catch (error: any) {
+      console.error("User Sync Error:", error.message, error.code);
+      let errorMessage = error.message;
+      
+      if (error.code === 404) {
+        errorMessage = `Appwrite Resource Not Found: Check if Database ID "${APPWRITE_CONFIG.databaseId}" and Collection ID "${APPWRITE_CONFIG.collections.users}" exist.`;
+      } else if (error.code === 401) {
+        errorMessage = "Appwrite Authentication Error: Check if your APPWRITE_API_KEY is correct and has the necessary permissions.";
+      } else if (error.message.includes("Unknown attribute")) {
+        const attr = error.message.split('"')[1] || "unknown";
+        errorMessage = `Appwrite Schema Error: The attribute "${attr}" is missing in your "users" collection. Please add a string attribute named "${attr}" in the Appwrite Console.`;
+      } else if (error.message.includes("document data is missing")) {
+        errorMessage = "Appwrite Schema Error: Your 'users' collection has NO attributes defined. Please go to Appwrite Console and add these attributes to the 'users' collection: 'name' (string), 'email' (string), 'role' (string), 'credits' (integer), 'createdAt' (string).";
+      }
+      
+      res.status(500).json({ error: errorMessage });
+    }
+  });
+
+  // Chats Routes
+  app.get("/api/chats", async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+
+    try {
+      const result = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.chats,
+        [Query.equal("userId", userId as string), Query.orderDesc("updatedAt")]
+      );
+      res.json(result.documents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/chats", async (req, res) => {
+    const { userId, title } = req.body;
+    const chatData: any = {
+      userId,
+      title,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      let success = false;
+      let retryCount = 0;
+      const maxRetries = Object.keys(chatData).length;
+      let chat;
+
+      while (!success && retryCount <= maxRetries) {
+        try {
+          chat = await appwriteDatabases.createDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.chats,
+            ID.unique(),
+            chatData
+          );
+          success = true;
+        } catch (createErr: any) {
+          if (createErr.message.includes("Unknown attribute") && retryCount < maxRetries) {
+            const attr = createErr.message.split('"')[1];
+            if (attr && chatData[attr] !== undefined) {
+              console.warn(`Self-healing (Chat): Removing unknown attribute "${attr}" and retrying...`);
+              delete chatData[attr];
+              retryCount++;
+              continue;
+            }
+          }
+          throw createErr;
+        }
+      }
+      res.json(chat);
+    } catch (error: any) {
+      console.error("Chat Creation Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/chats/:chatId", async (req, res) => {
+    const { chatId } = req.params;
+    const data = req.body;
+    try {
+      const chat = await appwriteDatabases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.chats,
+        chatId,
+        { ...data, updatedAt: new Date().toISOString() }
+      );
+      res.json(chat);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/chats/:chatId", async (req, res) => {
+    const { chatId } = req.params;
+    try {
+      await appwriteDatabases.deleteDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.chats,
+        chatId
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Messages Routes
+  app.get("/api/messages", async (req, res) => {
+    const { chatId } = req.query;
+    try {
+      const result = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.messages,
+        [Query.equal("chatId", chatId as string), Query.orderAsc("createdAt")]
+      );
+      res.json(result.documents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/messages", async (req, res) => {
+    const { chatId, role, content, sources } = req.body;
+    const messageData: any = {
+      chatId,
+      role,
+      content,
+      sources: sources || "[]",
+      createdAt: new Date().toISOString()
+    };
+    try {
+      let success = false;
+      let retryCount = 0;
+      const maxRetries = Object.keys(messageData).length;
+      let message;
+
+      while (!success && retryCount <= maxRetries) {
+        try {
+          message = await appwriteDatabases.createDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.messages,
+            ID.unique(),
+            messageData
+          );
+          success = true;
+        } catch (createErr: any) {
+          if (createErr.message.includes("Unknown attribute") && retryCount < maxRetries) {
+            const attr = createErr.message.split('"')[1];
+            if (attr && messageData[attr] !== undefined) {
+              console.warn(`Self-healing (Message): Removing unknown attribute "${attr}" and retrying...`);
+              delete messageData[attr];
+              retryCount++;
+              continue;
+            }
+          }
+          throw createErr;
+        }
+      }
+      res.json(message);
+    } catch (error: any) {
+      console.error("Message Creation Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/messages/:messageId", async (req, res) => {
+    const { messageId } = req.params;
+    const messageData = { ...req.body };
+    try {
+      let success = false;
+      let retryCount = 0;
+      const maxRetries = Object.keys(messageData).length;
+      let message;
+
+      while (!success && retryCount <= maxRetries) {
+        try {
+          message = await appwriteDatabases.updateDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.messages,
+            messageId,
+            messageData
+          );
+          success = true;
+        } catch (updateErr: any) {
+          if (updateErr.message.includes("Unknown attribute") && retryCount < maxRetries) {
+            const attr = updateErr.message.split('"')[1];
+            if (attr && messageData[attr] !== undefined) {
+              console.warn(`Self-healing (Message Update): Removing unknown attribute "${attr}" and retrying...`);
+              delete messageData[attr];
+              retryCount++;
+              continue;
+            }
+          }
+          throw updateErr;
+        }
+      }
+      res.json(message);
+    } catch (error: any) {
+      console.error("Message Update Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Credits Route
+  app.patch("/api/user/:uid/credits", async (req, res) => {
+    const { uid } = req.params;
+    const { credits } = req.body;
+    try {
+      const user = await appwriteDatabases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        uid,
+        { credits }
+      );
+      res.json(user);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Feedback Routes
+  app.get("/api/feedback", async (req, res) => {
+    try {
+      const response = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.feedback,
+        [Query.orderDesc("$createdAt"), Query.limit(50)]
+      );
+      res.json(response.documents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/feedback", async (req, res) => {
+    const { userId, userEmail, rating, comment } = req.body;
+    try {
+      const doc = await appwriteDatabases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.feedback,
+        ID.unique(),
+        {
+          userId,
+          userEmail,
+          rating,
+          comment,
+          createdAt: new Date().toISOString()
+        }
+      );
+      res.json(doc);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Premium Request Routes
+  app.get("/api/premium-requests", async (req, res) => {
+    try {
+      const response = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.premiumRequests,
+        [Query.orderDesc("$createdAt"), Query.limit(50)]
+      );
+      res.json(response.documents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/premium-requests", async (req, res) => {
+    const { userId, userEmail, plan, paymentMethod, transactionId, phoneNumber } = req.body;
+    try {
+      const doc = await appwriteDatabases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.premiumRequests,
+        ID.unique(),
+        {
+          userId,
+          userEmail,
+          plan,
+          paymentMethod,
+          transactionId,
+          phoneNumber,
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        }
+      );
+
+      // Send email notification
+      if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.GMAIL_USER,
+            pass: process.env.GMAIL_PASS
+          }
+        });
+
+        const mailOptions = {
+          from: process.env.GMAIL_USER,
+          to: 'munshidipa62@gmail.com',
+          subject: `New Premium Request: ${plan}`,
+          text: `User: ${userEmail}\nPlan: ${plan}\nMethod: ${paymentMethod}\nTransaction ID: ${transactionId}\nPhone: ${phoneNumber}`
+        };
+
+        transporter.sendMail(mailOptions).catch(e => console.error("Email error:", e));
+      }
+
+      res.json(doc);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/premium-requests/:requestId", async (req, res) => {
+    const { requestId } = req.params;
+    const { status } = req.body;
+    try {
+      const doc = await appwriteDatabases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.premiumRequests,
+        requestId,
+        { status }
+      );
+      res.json(doc);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // User Management Routes
+  app.get("/api/users/search", async (req, res) => {
+    const { term } = req.query;
+    try {
+      const response = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        [
+          Query.or([
+            Query.equal('email', term as string),
+            Query.equal('phoneNumber', term as string)
+          ])
+        ]
+      );
+      res.json(response.documents);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/users/:uid", async (req, res) => {
+    const { uid } = req.params;
+    try {
+      await appwriteDatabases.deleteDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        uid
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/users/:uid", async (req, res) => {
+    const { uid } = req.params;
+    const userData = { ...req.body };
+    try {
+      let success = false;
+      let retryCount = 0;
+      const maxRetries = Object.keys(userData).length;
+      let doc;
+
+      while (!success && retryCount <= maxRetries) {
+        try {
+          doc = await appwriteDatabases.updateDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.users,
+            uid,
+            userData
+          );
+          success = true;
+        } catch (updateErr: any) {
+          if (updateErr.message.includes("Unknown attribute") && retryCount < maxRetries) {
+            const attr = updateErr.message.split('"')[1];
+            if (attr && userData[attr] !== undefined) {
+              console.warn(`Self-healing (Update): Removing unknown attribute "${attr}" and retrying...`);
+              delete userData[attr];
+              retryCount++;
+              continue;
+            }
+          }
+          throw updateErr;
+        }
+      }
+      res.json(doc);
+    } catch (error: any) {
+      console.error("User Update Error:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/users/:uid", async (req, res) => {
+    const { uid } = req.params;
+    try {
+      const doc = await appwriteDatabases.getDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        uid
+      );
+      res.json(doc);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Stats Route
+  app.get("/api/stats", async (req, res) => {
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      
+      // Fetch global and daily stats
+      const [globalDoc, dailyDoc] = await Promise.all([
+        appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, 'global').catch(() => ({})),
+        appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, `daily_${today}`).catch(() => ({}))
+      ]);
+
+      // Fetch users for counts
+      const usersRes = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        [Query.limit(5000)]
+      );
+
+      // Fetch total chats count
+      const chatsRes = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.chats,
+        [Query.limit(1)]
+      );
+
+      // Fetch feedbacks for average rating
+      const feedbackRes = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.feedback,
+        [Query.limit(5000)]
+      );
+
+      res.json({
+        global: globalDoc,
+        daily: dailyDoc,
+        users: usersRes.documents,
+        totalChats: chatsRes.total,
+        feedbacks: feedbackRes.documents
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/test-appwrite", async (req, res) => {
+    try {
+      const result = await appwriteDatabases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.stats,
+        [Query.limit(1)]
+      );
+      res.json({ success: true, message: "Appwrite connection successful", count: result.total });
+    } catch (err: any) {
+      console.error("[Appwrite Test] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // API route for chat title generation
@@ -410,42 +1036,63 @@ ${context}`
 
       console.log("Response generated successfully");
 
-      // 4. Record Usage in Firestore
-      if (db) {
-        try {
-          const today = new Date().toISOString().split('T')[0];
-          const dailyStatsRef = db.collection('stats').doc(`daily_${today}`);
-          const globalStatsRef = db.collection('stats').doc('global');
-
-          const updateStats = async (ref: any) => {
+      // 4. Record Usage in Appwrite
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        
+        const updateStats = async (docId: string) => {
+          try {
+            let doc;
             try {
-              console.log(`Attempting to update stats at: ${ref.path}`);
-              // Ensure the document exists by using set with merge
-              await ref.set({
-                totalRequests: FieldValue.increment(1),
-                llamaTokens: FieldValue.increment(llamaTokens),
-                serperRequests: FieldValue.increment(context ? 1 : 0),
-                lastUpdated: FieldValue.serverTimestamp(),
-                date: today
-              }, { merge: true });
-              console.log(`Successfully updated stats at: ${ref.path}`);
-            } catch (innerErr: any) {
-              console.error(`Failed to update specific stat ref (${ref.path}):`, innerErr.message);
-              // If NOT_FOUND, it might be the database itself.
-              if (innerErr.message.includes('NOT_FOUND')) {
-                console.error(`[Firebase] Database or path not found for ${ref.path}. Check firestoreDatabaseId.`);
+              doc = await appwriteDatabases.getDocument(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.stats,
+                docId
+              );
+            } catch (err: any) {
+              if (err.code === 404) {
+                // Create if not exists
+                await appwriteDatabases.createDocument(
+                  APPWRITE_CONFIG.databaseId,
+                  APPWRITE_CONFIG.collections.stats,
+                  docId,
+                  {
+                    totalRequests: 1,
+                    llamaTokens: llamaTokens,
+                    serperRequests: context ? 1 : 0,
+                    lastUpdated: new Date().toISOString(),
+                    date: today
+                  }
+                );
+                return;
               }
+              throw err;
             }
-          };
 
-          await Promise.all([
-            updateStats(dailyStatsRef),
-            updateStats(globalStatsRef)
-          ]);
-          console.log("Usage stats updated in Firestore");
-        } catch (dbErr) {
-          console.error("Failed to update stats in Firestore:", dbErr);
-        }
+            // Update existing
+            await appwriteDatabases.updateDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.stats,
+              docId,
+              {
+                totalRequests: (doc.totalRequests || 0) + 1,
+                llamaTokens: (doc.llamaTokens || 0) + llamaTokens,
+                serperRequests: (doc.serperRequests || 0) + (context ? 1 : 0),
+                lastUpdated: new Date().toISOString()
+              }
+            );
+          } catch (innerErr: any) {
+            console.error(`[Appwrite Stats] Error updating ${docId}:`, innerErr.message);
+          }
+        };
+
+        await Promise.all([
+          updateStats(`daily_${today}`),
+          updateStats('global')
+        ]);
+        console.log("Usage stats updated in Appwrite");
+      } catch (dbErr) {
+        console.error("Failed to update stats in Appwrite:", dbErr);
       }
 
       res.json({

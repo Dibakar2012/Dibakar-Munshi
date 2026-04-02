@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Search, Sparkles, Mic, MicOff } from 'lucide-react';
+import { Send, Search, Sparkles, Mic, MicOff, Plus, Globe, Image as ImageIcon, ArrowRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -144,15 +144,15 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
         onSubmit={handleSubmit}
         initial={false}
         animate={{
-          scale: isFocused ? 1.01 : 1,
+          scale: isFocused ? 1.005 : 1,
           boxShadow: isFocused 
-            ? "0 0 50px rgba(59, 130, 246, 0.25), 0 0 0 2px rgba(59, 130, 246, 0.5)" 
+            ? "0 0 40px rgba(0, 255, 150, 0.1), 0 0 0 1px rgba(0, 255, 150, 0.2)" 
             : "0 0 0 1px var(--color-border)",
-          backgroundColor: "var(--color-surface)"
+          backgroundColor: isFocused ? "rgba(10, 18, 15, 0.8)" : "var(--color-surface)"
         }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
         className={cn(
-          "w-full max-w-3xl mx-auto backdrop-blur-2xl rounded-2xl md:rounded-3xl p-2 md:p-3 flex items-end gap-2 md:gap-3 transition-all relative overflow-hidden border border-white/10",
+          "w-full max-w-3xl mx-auto backdrop-blur-3xl rounded-2xl md:rounded-3xl p-1.5 md:p-2 flex items-end gap-1 md:gap-2 transition-all relative overflow-hidden border border-white/5",
           disabled && "opacity-50 cursor-not-allowed"
         )}
       >
@@ -170,14 +170,6 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
           )}
         </AnimatePresence>
 
-        <div className="p-3 text-text-muted hidden md:flex items-center justify-center relative z-10">
-          <motion.div
-            animate={{ rotate: isFocused ? 90 : 0, color: isFocused ? "#3b82f6" : "#9ca3af" }}
-          >
-            <Search size={22} />
-          </motion.div>
-        </div>
-
         <textarea
           ref={textareaRef}
           rows={1}
@@ -187,41 +179,27 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder="Search everything with Dibakar AI..."
+          placeholder="Ask anything..."
           disabled={disabled}
           autoFocus
-          className="flex-1 bg-transparent border-none outline-none py-3 px-2 md:px-0 resize-none text-fluid-lg md:text-xl text-text font-black placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
+          className="flex-1 bg-transparent border-none outline-none py-3 px-4 md:px-2 resize-none text-base md:text-lg text-text font-medium placeholder:text-text-muted/60 relative z-10 min-h-[44px] md:min-h-[48px] custom-scrollbar"
         />
 
-        <div className="flex items-center gap-1.5 md:gap-2 pr-1 pb-1 relative z-10">
+        <div className="flex items-center gap-1 md:gap-2 pr-1 pb-1 relative z-10">
           <motion.button
             type="button"
             onClick={toggleListening}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className={cn(
-              "p-2.5 md:p-3 rounded-xl md:rounded-2xl transition-all shadow-lg",
+              "p-2.5 rounded-xl transition-all",
               isListening 
-                ? "bg-red-500 text-white shadow-red-500/20" 
-                : "bg-white/5 text-text-muted/40 hover:bg-white/10 hover:text-white"
+                ? "bg-red-500 text-white" 
+                : "text-text-muted hover:text-white"
             )}
-            title={isListening ? "Stop Listening" : "Start Voice Search"}
           >
-            {isListening ? <MicOff size={14} className="md:w-4 md:h-4" /> : <Mic size={14} className="md:w-4 md:h-4" />}
+            {isListening ? <MicOff size={18} /> : <Mic size={18} />}
           </motion.button>
-
-          <AnimatePresence>
-            {query.trim() && (
-              <motion.div
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                className="hidden md:flex items-center gap-1 text-[10px] font-bold text-primary/60 uppercase tracking-widest px-2"
-              >
-                Ready
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           <motion.button
             type="submit"
@@ -229,13 +207,13 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className={cn(
-              "p-3 rounded-2xl transition-all shadow-lg",
+              "p-2.5 rounded-xl transition-all",
               query.trim() && !disabled 
-                ? "bg-primary text-white shadow-primary/20" 
-                : "bg-white/5 text-text-muted/40"
+                ? "bg-primary text-black" 
+                : "bg-surface-hover text-text-muted/40"
             )}
           >
-            <Send size={20} className={cn("transition-transform", query.trim() && "rotate-12")} />
+            <ArrowRight size={20} />
           </motion.button>
         </div>
       </motion.form>
@@ -258,7 +236,7 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
             </motion.p>
           )}
         </AnimatePresence>
-        <p className="text-center text-[10px] text-text-muted/50 font-medium uppercase tracking-[0.2em]">
+        <p className="text-center text-[9px] text-text-muted/30 font-medium uppercase tracking-[0.3em] transition-opacity hover:opacity-100">
           Powered by Dibakar AI
         </p>
         <div className="h-px w-12 bg-gradient-to-r from-transparent via-white/10 to-transparent" />

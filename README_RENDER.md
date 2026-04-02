@@ -14,8 +14,12 @@ In the Render Dashboard, go to **Environment** and add:
 - `SERPER_API_KEY`: Your Serper.dev API key
 - `GMAIL_USER`: Your Gmail address
 - `GMAIL_PASS`: Your Gmail App Password
-- `FIREBASE_PROJECT_ID`: Your Firebase project ID
-- `GOOGLE_CLOUD_PROJECT`: Your Google Cloud project ID
+- `APPWRITE_ENDPOINT`: Your Appwrite endpoint (e.g., https://cloud.appwrite.io/v1)
+- `APPWRITE_PROJECT_ID`: Your Appwrite project ID
+- `APPWRITE_API_KEY`: Your Appwrite API key
+- `APPWRITE_DATABASE_ID`: Your Appwrite database ID
+- `APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID`: Your premium requests collection ID
+- `APPWRITE_STATS_COLLECTION_ID`: Your stats collection ID
 - `NODE_ENV`: `production`
 
 ### 3. Optimization Details
@@ -25,4 +29,4 @@ In the Render Dashboard, go to **Environment** and add:
 
 ### 4. Troubleshooting
 - **Main File Not Found:** Ensure you've selected **Web Service** (not Static Site) and that the **Start Command** is `npm start`.
-- **Firebase Errors:** Make sure you've uploaded your `firebase-applet-config.json` or set the environment variables correctly.
+- **Appwrite Errors:** Make sure you've set the environment variables correctly and that your Appwrite project allows requests from your Render domain.

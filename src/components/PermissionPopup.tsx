@@ -13,28 +13,28 @@ export default function PermissionPopup({ onClose }: PermissionPopupProps) {
       id: 'camera',
       title: 'Camera Access',
       description: 'Allow access to your camera for video features.',
-      icon: <Camera className="text-blue-500" size={24} />,
+      icon: <Camera className="text-primary" size={24} />,
       permission: 'camera'
     },
     {
       id: 'microphone',
       title: 'Microphone Access',
       description: 'Allow access to your microphone for voice search.',
-      icon: <Mic className="text-purple-500" size={24} />,
+      icon: <Mic className="text-secondary" size={24} />,
       permission: 'microphone'
     },
     {
       id: 'location',
       title: 'Location Access',
       description: 'Allow access to your location for better search results.',
-      icon: <Shield className="text-green-500" size={24} />,
+      icon: <Shield className="text-primary" size={24} />,
       permission: 'geolocation'
     },
     {
       id: 'files',
       title: 'File Storage',
       description: 'Allow access to store and retrieve files.',
-      icon: <FolderOpen className="text-amber-500" size={24} />,
+      icon: <FolderOpen className="text-secondary" size={24} />,
       permission: 'files'
     }
   ];
