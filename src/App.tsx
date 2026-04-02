@@ -28,6 +28,7 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [virtualMessages, setVirtualMessages] = useState<Message[]>([]);
 
   useEffect(() => {
     // Handle mobile viewport height issues
@@ -243,6 +244,7 @@ export default function App() {
           // Virtual mode: use a temporary ID
           chatId = 'virtual_' + Date.now();
           setCurrentChatId(chatId);
+          setVirtualMessages([]);
         }
       } else if (user && !user.isVirtual) {
         // Update existing chat's updatedAt (don't await, it's not critical for search)
@@ -274,6 +276,19 @@ export default function App() {
           .slice(-6)
           .map((doc: any) => ({ role: doc.role, content: doc.content }))
           .filter((m: any) => m.content !== 'Thinking...');
+      } else {
+        // Virtual mode: add user message locally
+        const userMsg: Message = {
+          id: 'vmsg_' + Date.now(),
+          chatId: chatId!,
+          role: 'user',
+          content: queryText,
+          createdAt: new Date().toISOString()
+        };
+        setVirtualMessages(prev => [...prev, userMsg]);
+        history = virtualMessages
+          .slice(-6)
+          .map(m => ({ role: m.role, content: m.content }));
       }
 
       // 3. Create assistant message placeholder and start search in parallel
@@ -328,6 +343,17 @@ export default function App() {
             sources: JSON.stringify(data.sources || [])
           })
         });
+      } else if (user && user.isVirtual) {
+        // Virtual mode: add assistant response locally
+        const assistantMsg: Message = {
+          id: 'vmsg_assistant_' + Date.now(),
+          chatId: chatId!,
+          role: 'assistant',
+          content: data.answer,
+          sources: data.sources || [],
+          createdAt: new Date().toISOString()
+        };
+        setVirtualMessages(prev => [...prev, assistantMsg]);
       }
 
       // 6. Generate a better title if it's a new chat
@@ -343,8 +369,8 @@ export default function App() {
         }).catch(e => console.error('Title generation error:', e));
       }
 
-      // 7. Deduct credit if not admin
-      if (user && user.uid && user.role !== 'admin') {
+      // 7. Deduct credit if not admin and not virtual
+      if (user && user.uid && user.role !== 'admin' && !user.isVirtual) {
         try {
           await fetch(`/api/user/${user.uid}/credits`, {
             method: 'PATCH',
@@ -620,7 +646,13 @@ export default function App() {
           />
         ) : (
           <>
-            <ChatArea chatId={currentChatId} isSearching={isSearching} user={user} optimisticQuery={currentQuery} />
+            <ChatArea 
+              chatId={currentChatId} 
+              isSearching={isSearching} 
+              user={user} 
+              optimisticQuery={currentQuery} 
+              virtualMessages={virtualMessages}
+            />
             <SearchBar onSearch={handleSearch} disabled={isSearching} chatId={currentChatId} />
           </>
         )}

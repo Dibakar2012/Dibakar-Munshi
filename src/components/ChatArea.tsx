@@ -22,6 +22,7 @@ interface ChatAreaProps {
   isSearching: boolean;
   user: UserProfile | null;
   optimisticQuery?: string | null;
+  virtualMessages?: Message[];
 }
 
 function SourcesToggle({ sources }: { sources: SearchSource[] }) {
@@ -171,7 +172,7 @@ function FeedbackButtons({ chatId, messageId, feedback, onUpdate }: { chatId: st
   );
 }
 
-export default function ChatArea({ chatId, isSearching, user, optimisticQuery }: ChatAreaProps) {
+export default function ChatArea({ chatId, isSearching, user, optimisticQuery, virtualMessages = [] }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -183,8 +184,18 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery }:
   const lastScrollHeight = useRef<number>(0);
   const isAutoScrolling = useRef(true);
 
+  useEffect(() => {
+    if (chatId?.startsWith('virtual_')) {
+      setMessages(virtualMessages);
+    }
+  }, [virtualMessages, chatId]);
+
   const fetchMessages = async () => {
     if (!chatId) return;
+    if (chatId.startsWith('virtual_')) {
+      setMessages(virtualMessages);
+      return;
+    }
     try {
       const response = await fetch(`/api/messages?chatId=${chatId}`);
       if (!response.ok) return;
@@ -223,6 +234,12 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery }:
       setMessages([]);
       setMsgLimit(INITIAL_LIMIT);
       setHasMore(true);
+      return;
+    }
+
+    if (chatId.startsWith('virtual_')) {
+      setMessages(virtualMessages);
+      setHasMore(false);
       return;
     }
 
