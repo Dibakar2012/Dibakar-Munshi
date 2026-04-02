@@ -179,7 +179,13 @@ const startServer = async () => {
   if (!process.env.APPWRITE_PROJECT_ID && !process.env.VITE_APPWRITE_PROJECT_ID) missingVars.push('APPWRITE_PROJECT_ID or VITE_APPWRITE_PROJECT_ID');
   
   if (missingVars.length > 0) {
-    console.error(`CRITICAL: Missing environment variables: ${missingVars.join(', ')}`);
+    console.error(`CRITICAL: Missing environment variables on Render: ${missingVars.join(', ')}`);
+    console.error("Please add these variables in your Render Dashboard -> Environment Settings.");
+  } else {
+    console.log("All critical Appwrite environment variables are present.");
+    console.log("- Project ID:", process.env.APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID);
+    console.log("- Database ID:", process.env.APPWRITE_DATABASE_ID || process.env.VITE_APPWRITE_DATABASE_ID);
+    console.log("- API Key length:", process.env.APPWRITE_API_KEY?.length || 0);
   }
 
   // Initialize Groq inside startServer to use latest env vars
@@ -402,7 +408,9 @@ const startServer = async () => {
       if (error.code === 404) {
         errorMessage = `Appwrite Resource Not Found: Check if Database ID "${APPWRITE_CONFIG.databaseId}" and Collection ID "${APPWRITE_CONFIG.collections.users}" exist.`;
       } else if (error.code === 401) {
-        errorMessage = "Appwrite Authentication Error: Check if your APPWRITE_API_KEY is correct and has the necessary permissions.";
+        errorMessage = "Appwrite Authentication Error: Your APPWRITE_API_KEY is incorrect or missing permissions. Please check your Render Dashboard -> Environment Settings and ensure the API Key has 'Database' and 'Collection' permissions.";
+      } else if (error.code === 403) {
+        errorMessage = "Appwrite Permission Error: Your API Key does not have the necessary permissions. Ensure you have enabled 'Database' and 'Collection' scopes for this key in the Appwrite Console.";
       } else if (error.message.includes("Unknown attribute")) {
         const attr = error.message.split('"')[1] || "unknown";
         errorMessage = `Appwrite Schema Error: The attribute "${attr}" is missing in your "users" collection. Please add a string attribute named "${attr}" in the Appwrite Console.`;
