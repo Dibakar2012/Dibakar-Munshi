@@ -15,10 +15,14 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 // Appwrite Setup
+const APPWRITE_ENDPOINT = process.env.APPWRITE_ENDPOINT || process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+const APPWRITE_PROJECT_ID = process.env.APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID || "";
+const APPWRITE_API_KEY = process.env.APPWRITE_API_KEY || "";
+
 const appwriteClient = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT || process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1")
-  .setProject(process.env.APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID || "")
-  .setKey(process.env.APPWRITE_API_KEY || "");
+  .setEndpoint(APPWRITE_ENDPOINT)
+  .setProject(APPWRITE_PROJECT_ID)
+  .setKey(APPWRITE_API_KEY);
 
 const appwriteDatabases = new Databases(appwriteClient);
 
@@ -51,7 +55,12 @@ const transporter = nodemailer.createTransport({
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
-    appwrite: true, 
+    appwrite: {
+      endpoint: !!APPWRITE_ENDPOINT,
+      project: !!APPWRITE_PROJECT_ID,
+      key: !!APPWRITE_API_KEY,
+      database: !!APPWRITE_CONFIG.databaseId
+    },
     hasKeys: !!(GROQ_API_KEY && SERPER_API_KEY),
     env: process.env.NODE_ENV,
     vercel: true
@@ -201,7 +210,30 @@ app.post("/api/user/sync", async (req, res) => {
     }
     res.json(userProfile);
   } catch (error: any) {
-    console.error("User Sync Error Vercel:", error.message);
+    console.error("User Sync Error Vercel:", error.message, error.code);
+    
+    // If it's an Auth, Permission, or Project ID error, return a "Virtual Profile"
+    // so the user can still use the app while they fix the environment variables.
+    if (error.code === 401 || error.code === 403 || error.message.includes("project ID")) {
+      console.warn("Appwrite Config Error. Returning virtual profile.");
+      const isAdminEmail = 
+        email?.toLowerCase() === "munshidipa62@gmail.com" || 
+        email?.toLowerCase() === "dibakar61601@gmail.com";
+        
+      return res.json({
+        $id: uid,
+        name: name || 'User',
+        email: email || '',
+        role: isAdminEmail ? 'admin' : 'user',
+        credits: isAdminEmail ? 999999 : 10,
+        createdAt: new Date().toISOString(),
+        isVirtual: true,
+        warning: error.message.includes("project ID")
+          ? "Appwrite Project ID Error: Your APPWRITE_PROJECT_ID is missing or incorrect in Vercel settings."
+          : "Appwrite Authentication Error: Your APPWRITE_API_KEY is incorrect or missing scopes."
+      });
+    }
+
     res.status(500).json({ error: error.message });
   }
 });
