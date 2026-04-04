@@ -104,10 +104,11 @@ const startServer = async () => {
         collectionId: APPWRITE_CONFIG.collections.premiumRequests,
         attributes: [
           { key: "userId", type: "string", size: 255, required: true },
-          { key: "userEmail", type: "string", size: 255, required: true },
-          { key: "userName", type: "string", size: 255, required: true },
+          { key: "email", type: "string", size: 255, required: true },
+          { key: "name", type: "string", size: 255, required: true },
+          { key: "phone", type: "string", size: 255, required: true },
           { key: "plan", type: "string", size: 50, required: true },
-          { key: "message", type: "string", size: 1000, required: false },
+          { key: "screenshotUrl", type: "string", size: 1000, required: false },
           { key: "status", type: "string", size: 50, required: true },
           { key: "createdAt", type: "string", size: 50, required: true },
         ]
@@ -223,7 +224,7 @@ const startServer = async () => {
 
   // API routes
   app.post("/api/premium-request", async (req, res) => {
-    const { email, name, phone, plan } = req.body;
+    const { email, name, phone, plan, screenshotUrl, userId } = req.body;
 
     if (!email || !name || !phone || !plan) {
       return res.status(400).json({ error: "All fields are required" });
@@ -242,6 +243,7 @@ const startServer = async () => {
           Email: ${email}
           Phone: ${phone}
           Plan: ${plan}
+          Screenshot: ${screenshotUrl || 'Not provided'}
           Time: ${new Date().toLocaleString()}
           
           User has requested for a premium plan. Please contact them within 24 hours.
@@ -282,6 +284,8 @@ const startServer = async () => {
             email,
             phone,
             plan,
+            screenshotUrl: screenshotUrl || '',
+            userId: userId || 'unknown',
             status: 'pending',
             createdAt: new Date().toISOString()
           }

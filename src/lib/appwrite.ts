@@ -19,5 +19,6 @@ export const APPWRITE_CONFIG = {
         stats: import.meta.env.VITE_APPWRITE_STATS_COLLECTION_ID || '',
         feedback: import.meta.env.VITE_APPWRITE_FEEDBACK_COLLECTION_ID || '',
         premiumRequests: import.meta.env.VITE_APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || '',
-    }
+    },
+    bucketId: import.meta.env.VITE_APPWRITE_BUCKET_ID || '',
 };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, User, Phone, MapPin, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react';
+import { X, Mail, User, Phone, CheckCircle2, ChevronRight, Loader2, Upload, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserProfile } from '../types';
 
@@ -12,6 +12,8 @@ interface PremiumRequestModalProps {
 
 type Step = 1 | 2 | 3 | 4;
 
+import { databases, APPWRITE_CONFIG, ID } from '../lib/appwrite';
+
 export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRequestModalProps) {
   const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,18 +22,7 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
     name: user.name || '',
     phone: '',
     plan: 'Starter Plan (₹35)',
-    couponCode: ''
   });
-
-  const getPlanPrice = () => {
-    if (formData.plan.includes('35')) return 35;
-    if (formData.plan.includes('99')) return 99;
-    return 0;
-  };
-
-  const isDiscountApplied = formData.couponCode.trim().toLowerCase() === 'dibakar';
-  const originalPrice = getPlanPrice();
-  const discountedPrice = isDiscountApplied ? (originalPrice * 0.95).toFixed(2) : originalPrice;
 
   const handleNext = () => {
     if (step === 1 && !formData.email) {
@@ -42,25 +33,33 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
       toast.error('Name and Phone are required');
       return;
     }
+    if (step === 3 && !formData.plan) {
+      toast.error('Please select a plan');
+      return;
+    }
     setStep((prev) => (prev + 1) as Step);
   };
 
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
-      // 1. Create document in Appwrite via backend
-      await fetch('/api/premium-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          userEmail: formData.email,
-          plan: formData.plan,
-          paymentMethod: 'WhatsApp/Manual',
-          transactionId: formData.couponCode || 'N/A',
-          phoneNumber: formData.phone
-        })
-      });
+      
+      // 1. Save request to database & send email via API
+      try {
+        await fetch('/api/premium-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.uid,
+            email: formData.email,
+            name: formData.name,
+            phone: formData.phone,
+            plan: formData.plan
+          })
+        });
+      } catch (apiErr) {
+        console.error('Failed to save request to database:', apiErr);
+      }
 
       // 2. Construct WhatsApp message
       const adminNumber = '919475954278';
@@ -68,10 +67,8 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
         `*Name:* ${formData.name}\n` +
         `*Email:* ${formData.email}\n` +
         `*Phone:* ${formData.phone}\n` +
-        `*Plan:* ${formData.plan}\n` +
-        `*Coupon:* ${formData.couponCode || 'None'}\n` +
-        `*Final Price:* ₹${discountedPrice}\n\n` +
-        `Please contact me for the premium subscription.`;
+        `*Plan:* ${formData.plan}\n\n` +
+        `I want to upgrade to premium. Please provide payment details or activate my account.`;
       
       const whatsappUrl = `https://wa.me/${adminNumber}?text=${encodeURIComponent(message)}`;
       
@@ -79,7 +76,7 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
       window.open(whatsappUrl, '_blank');
       
       setStep(4);
-      toast.success('WhatsApp opened! Please send the message.');
+      toast.success('WhatsApp opened! Please send the message to complete your request.');
     } catch (error: any) {
       toast.error('Something went wrong');
     } finally {
@@ -90,18 +87,18 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="bg-surface border border-border w-[92%] max-w-[400px] rounded-3xl overflow-hidden shadow-2xl relative"
+        className="bg-surface border border-border w-full max-w-[400px] rounded-3xl overflow-hidden shadow-2xl relative my-auto max-h-[90vh] flex flex-col"
       >
         {/* Header */}
-        <div className="p-6 border-b border-border flex items-center justify-between bg-surface/50">
+        <div className="p-5 md:p-6 border-b border-border flex items-center justify-between bg-surface/50 shrink-0">
           <div>
-            <h3 className="text-xl font-bold">Premium Request</h3>
-            <p className="text-[10px] text-text-muted uppercase tracking-widest">Step {step} of 3</p>
+            <h3 className="text-lg md:text-xl font-bold">Premium Upgrade</h3>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest">Step {step > 3 ? 3 : step} of 3</p>
           </div>
           <button 
             onClick={onClose}
@@ -112,7 +109,7 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-5 md:p-6 pb-10 space-y-6 overflow-y-auto custom-scrollbar flex-1">
           <AnimatePresence mode="wait">
             {step === 1 && (
               <motion.div
@@ -131,16 +128,16 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="your@email.com"
-                    className="w-full bg-background border border-border rounded-2xl py-4 px-5 focus:ring-2 ring-primary/50 outline-none transition-all"
+                    className="w-full bg-background border border-border rounded-2xl py-3.5 md:py-4 px-5 focus:ring-2 ring-primary/50 outline-none transition-all text-sm"
                     required
                   />
                 </div>
                 <p className="text-[10px] text-text-muted text-center italic">
-                  This email will be used to contact you.
+                  This email is auto-filled from your account.
                 </p>
                 <button
                   onClick={handleNext}
-                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-primary/20"
+                  className="w-full bg-primary text-white py-3.5 md:py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-primary/20"
                 >
                   Next <ChevronRight size={18} />
                 </button>
@@ -163,7 +160,7 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
                       placeholder="Your Full Name"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full bg-background border border-border rounded-2xl py-4 pl-12 pr-5 focus:ring-2 ring-primary/50 outline-none transition-all"
+                      className="w-full bg-background border border-border rounded-2xl py-3.5 md:py-4 pl-12 pr-5 focus:ring-2 ring-primary/50 outline-none transition-all text-sm"
                     />
                   </div>
                   <div className="relative">
@@ -173,13 +170,13 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
                       placeholder="Phone Number"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full bg-background border border-border rounded-2xl py-4 pl-12 pr-5 focus:ring-2 ring-primary/50 outline-none transition-all"
+                      className="w-full bg-background border border-border rounded-2xl py-3.5 md:py-4 pl-12 pr-5 focus:ring-2 ring-primary/50 outline-none transition-all text-sm"
                     />
                   </div>
                 </div>
                 <button
                   onClick={handleNext}
-                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition-all"
+                  className="w-full bg-primary text-white py-3.5 md:py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition-all shadow-lg shadow-primary/20"
                 >
                   Next <ChevronRight size={18} />
                 </button>
@@ -201,7 +198,7 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${formData.plan.includes('35') ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}
                   >
                     <div>
-                      <p className="font-bold">Starter Plan</p>
+                      <p className="font-bold text-sm md:text-base">Starter Plan</p>
                       <p className="text-xs text-text-muted">₹35 / 70 Requests</p>
                     </div>
                     {formData.plan.includes('35') && <CheckCircle2 className="text-primary" size={20} />}
@@ -211,47 +208,16 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
                     className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${formData.plan.includes('99') ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}
                   >
                     <div>
-                      <p className="font-bold">Pro Plan</p>
+                      <p className="font-bold text-sm md:text-base">Pro Plan</p>
                       <p className="text-xs text-text-muted">₹99 / 300 Requests</p>
                     </div>
                     {formData.plan.includes('99') && <CheckCircle2 className="text-primary" size={20} />}
-                  </div>
-
-                  {/* Coupon Code Section */}
-                  <div className="space-y-2 pt-2">
-                    <label className="text-[10px] font-bold text-text-muted uppercase tracking-wider">Have a coupon code?</label>
-                    <input
-                      type="text"
-                      placeholder="Enter coupon code"
-                      value={formData.couponCode}
-                      onChange={(e) => setFormData({ ...formData, couponCode: e.target.value })}
-                      className="w-full bg-background border border-border rounded-xl py-3 px-4 focus:ring-2 ring-primary/50 outline-none transition-all text-sm"
-                    />
-                    {isDiscountApplied && (
-                      <p className="text-[10px] text-green-500 font-bold flex items-center gap-1">
-                        <CheckCircle2 size={10} /> 5% Discount Applied!
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Price Summary */}
-                  <div className="p-4 bg-surface-hover rounded-2xl border border-border space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-text-muted">Plan Price:</span>
-                      <span className={isDiscountApplied ? 'line-through text-text-muted' : 'font-bold'}>₹{originalPrice}</span>
-                    </div>
-                    {isDiscountApplied && (
-                      <div className="flex justify-between text-sm font-bold text-primary">
-                        <span>Discounted Price:</span>
-                        <span>₹{discountedPrice}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
                 <button
                   onClick={handleSubmit}
                   disabled={isSubmitting}
-                  className="w-full bg-primary text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50"
+                  className="w-full bg-primary text-white py-3.5 md:py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : 'Submit via WhatsApp'}
                 </button>
@@ -263,23 +229,25 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
                 key="step4"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="text-center py-8 space-y-4"
+                className="text-center py-6 md:py-8 space-y-4"
               >
-                <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="text-green-500" size={40} />
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="text-green-500" size={32} />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-xl font-bold">Request Successful!</h3>
-                  <p className="text-sm text-text-muted px-4">
-                    Your request has been sent to Dibakar AI Team via WhatsApp. 
-                    Apna premium request liya gaya hai. Under 24 hours Dibakar AI team ap sa contact karega.
+                  <h3 className="text-lg md:text-xl font-bold">Request Sent!</h3>
+                  <p className="text-xs md:text-sm text-text-muted px-4">
+                    WhatsApp has been opened with your details. Please send the message to complete your request.
+                  </p>
+                  <p className="text-[10px] text-text-muted italic">
+                    Under 24 hours Dibakar AI team ap sa contact karega.
                   </p>
                 </div>
                 <button
                   onClick={onClose}
-                  className="w-full bg-surface-hover border border-border py-4 rounded-2xl font-bold hover:bg-surface transition-all mt-4"
+                  className="w-full bg-surface-hover border border-border py-3.5 md:py-4 rounded-2xl font-bold hover:bg-surface transition-all mt-4"
                 >
-                  Close
+                  Close & Return
                 </button>
               </motion.div>
             )}
@@ -287,8 +255,8 @@ export default function PremiumRequestModal({ isOpen, onClose, user }: PremiumRe
         </div>
 
         {/* Footer */}
-        {step < 4 && (
-          <div className="p-4 bg-surface-hover/50 text-center">
+        {step < 5 && (
+          <div className="p-4 bg-surface-hover/50 text-center shrink-0">
             <p className="text-[10px] text-text-muted uppercase tracking-widest">
               Dibakar AI Premium Support
             </p>
