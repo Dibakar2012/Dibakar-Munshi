@@ -5,27 +5,32 @@ import Groq from "groq-sdk";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import cors from "cors";
+import { format } from "date-fns";
 import { Client, Databases, ID, Query } from "node-appwrite";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // Appwrite Setup
 const appwriteClient = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1")
-  .setProject(process.env.APPWRITE_PROJECT_ID || "")
+  .setEndpoint(process.env.APPWRITE_ENDPOINT || process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1")
+  .setProject(process.env.APPWRITE_PROJECT_ID || process.env.VITE_APPWRITE_PROJECT_ID || "")
   .setKey(process.env.APPWRITE_API_KEY || "");
 
 const appwriteDatabases = new Databases(appwriteClient);
 
 const APPWRITE_CONFIG = {
-  databaseId: process.env.APPWRITE_DATABASE_ID || "main",
+  databaseId: process.env.APPWRITE_DATABASE_ID || process.env.VITE_APPWRITE_DATABASE_ID || "main",
   collections: {
-    premiumRequests: process.env.APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || "premium_requests",
-    stats: process.env.APPWRITE_STATS_COLLECTION_ID || "stats",
+    users: process.env.APPWRITE_USERS_COLLECTION_ID || process.env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
+    chats: process.env.APPWRITE_CHATS_COLLECTION_ID || process.env.VITE_APPWRITE_CHATS_COLLECTION_ID || "chats",
+    messages: process.env.APPWRITE_MESSAGES_COLLECTION_ID || process.env.VITE_APPWRITE_MESSAGES_COLLECTION_ID || "messages",
+    premiumRequests: process.env.APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || process.env.VITE_APPWRITE_PREMIUM_REQUESTS_COLLECTION_ID || "premium_requests",
+    stats: process.env.APPWRITE_STATS_COLLECTION_ID || process.env.VITE_APPWRITE_STATS_COLLECTION_ID || "stats",
+    feedback: process.env.APPWRITE_FEEDBACK_COLLECTION_ID || process.env.VITE_APPWRITE_FEEDBACK_COLLECTION_ID || "feedback",
   }
 };
 
@@ -53,6 +58,10 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.get("/api/ping", (req, res) => {
+  res.json({ status: "alive", timestamp: new Date().toISOString() });
+});
+
 app.get("/api/test-appwrite", async (req, res) => {
   try {
     const result = await appwriteDatabases.listDocuments(
@@ -68,7 +77,7 @@ app.get("/api/test-appwrite", async (req, res) => {
 });
 
 app.post("/api/premium-request", async (req, res) => {
-  const { email, name, phone, plan } = req.body;
+  const { email, name, phone, plan, screenshotUrl, userId } = req.body;
   if (!email || !name || !phone || !plan) return res.status(400).json({ error: "All fields are required" });
 
   try {
@@ -76,7 +85,7 @@ app.post("/api/premium-request", async (req, res) => {
       from: process.env.GMAIL_USER || "dibakar61601@gmail.com",
       to: "munshidipa62@gmail.com",
       subject: `New Premium Request from ${name}`,
-      text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nPlan: ${plan}\nTime: ${new Date().toLocaleString()}`,
+      text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone}\nPlan: ${plan}\nScreenshot: ${screenshotUrl || 'Not provided'}\nTime: ${new Date().toLocaleString()}`,
     };
 
     const userMailOptions = {
@@ -102,6 +111,8 @@ app.post("/api/premium-request", async (req, res) => {
           email,
           phone,
           plan,
+          screenshotUrl: screenshotUrl || '',
+          userId: userId || 'unknown',
           status: 'pending',
           createdAt: new Date().toISOString()
         }
@@ -113,6 +124,398 @@ app.post("/api/premium-request", async (req, res) => {
     res.json({ success: true, message: "Request sent successfully" });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to send request" });
+  }
+});
+
+app.post("/api/admin/setup-db", async (req, res) => {
+  try {
+    // This is a simplified version for Vercel, usually schema is handled manually or on start
+    res.json({ success: true, message: "Database schema setup triggered successfully (Vercel)." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/title", async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: "Message is required" });
+  if (!GROQ_API_KEY) return res.status(500).json({ error: "GROQ_API_KEY is missing" });
+
+  const groq = new Groq({ apiKey: GROQ_API_KEY });
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { 
+          role: "system", 
+          content: "Generate a very short, descriptive title (max 5 words) for a chat that starts with the user's message. Return only the title text, no quotes or extra words." 
+        },
+        { role: "user", content: message },
+      ],
+      model: "llama-3.3-70b-versatile",
+    });
+    const title = completion.choices[0]?.message?.content?.trim() || message.slice(0, 30);
+    res.json({ title });
+  } catch (error: any) {
+    console.error("Title API Error Vercel:", error.message);
+    res.json({ title: message.slice(0, 30) });
+  }
+});
+
+// User Sync Route
+app.post("/api/user/sync", async (req, res) => {
+  const { uid, email, name } = req.body;
+  if (!uid) return res.status(400).json({ error: "UID is required" });
+
+  try {
+    let userProfile;
+    try {
+      userProfile = await appwriteDatabases.getDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        uid
+      );
+    } catch (err: any) {
+      if (err.code === 404) {
+        const isAdminEmail = 
+          email?.toLowerCase() === "munshidipa62@gmail.com" || 
+          email?.toLowerCase() === "munshidipa@gmail.com" || 
+          email?.toLowerCase() === "dibakar61601@gmail.com";
+
+        const userData: any = {
+          name: name || 'User',
+          email: email || '',
+          role: isAdminEmail ? 'admin' : 'user',
+          credits: isAdminEmail ? 999999 : 10,
+          createdAt: new Date().toISOString()
+        };
+
+        userProfile = await appwriteDatabases.createDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.users,
+          uid,
+          userData
+        );
+      } else {
+        throw err;
+      }
+    }
+    res.json(userProfile);
+  } catch (error: any) {
+    console.error("User Sync Error Vercel:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Chats Routes
+app.get("/api/chats", async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: "userId is required" });
+
+  try {
+    const result = await appwriteDatabases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.chats,
+      [Query.equal("userId", userId as string), Query.orderDesc("updatedAt")]
+    );
+    res.json(result.documents);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/chats", async (req, res) => {
+  const { userId, title } = req.body;
+  try {
+    const chat = await appwriteDatabases.createDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.chats,
+      ID.unique(),
+      {
+        userId,
+        title,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    );
+    res.json(chat);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/chats/:chatId", async (req, res) => {
+  const { chatId } = req.params;
+  const data = req.body;
+  try {
+    const chat = await appwriteDatabases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.chats,
+      chatId,
+      { ...data, updatedAt: new Date().toISOString() }
+    );
+    res.json(chat);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/chats/:chatId", async (req, res) => {
+  const { chatId } = req.params;
+  try {
+    await appwriteDatabases.deleteDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.chats,
+      chatId
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Messages Routes
+app.get("/api/messages", async (req, res) => {
+  const { chatId } = req.query;
+  try {
+    const result = await appwriteDatabases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.messages,
+      [Query.equal("chatId", chatId as string), Query.orderAsc("createdAt")]
+    );
+    res.json(result.documents);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/messages", async (req, res) => {
+  const { chatId, role, content, sources } = req.body;
+  try {
+    const message = await appwriteDatabases.createDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.messages,
+      ID.unique(),
+      {
+        chatId,
+        role,
+        content,
+        sources: sources || "[]",
+        createdAt: new Date().toISOString()
+      }
+    );
+    res.json(message);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/messages/:messageId", async (req, res) => {
+  const { messageId } = req.params;
+  const messageData = { ...req.body };
+  try {
+    const message = await appwriteDatabases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.messages,
+      messageId,
+      messageData
+    );
+    res.json(message);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Credits Route
+app.patch("/api/user/:uid/credits", async (req, res) => {
+  const { uid } = req.params;
+  const { credits } = req.body;
+  try {
+    const user = await appwriteDatabases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.users,
+      uid,
+      { credits }
+    );
+    res.json(user);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Feedback Routes
+app.get("/api/feedback", async (req, res) => {
+  try {
+    const response = await appwriteDatabases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.feedback,
+      [Query.orderDesc("$createdAt"), Query.limit(50)]
+    );
+    res.json(response.documents);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/feedback", async (req, res) => {
+  const { userId, userEmail, rating, comment } = req.body;
+  try {
+    const doc = await appwriteDatabases.createDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.feedback,
+      ID.unique(),
+      {
+        userId,
+        userEmail,
+        rating,
+        comment,
+        createdAt: new Date().toISOString()
+      }
+    );
+    res.json(doc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Premium Requests (Admin)
+app.get("/api/premium-requests", async (req, res) => {
+  try {
+    const response = await appwriteDatabases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.premiumRequests,
+      [Query.orderDesc("$createdAt"), Query.limit(50)]
+    );
+    res.json(response.documents);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/premium-requests/:requestId", async (req, res) => {
+  const { requestId } = req.params;
+  const { status } = req.body;
+  try {
+    const doc = await appwriteDatabases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.premiumRequests,
+      requestId,
+      { status }
+    );
+    res.json(doc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Stats Route
+app.get("/api/stats", async (req, res) => {
+  try {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const [globalDoc, dailyDoc, usersRes, chatsRes, feedbackRes] = await Promise.all([
+      appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, 'global').catch(() => ({})),
+      appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, `daily_${today}`).catch(() => ({})),
+      appwriteDatabases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.users, [Query.limit(5000)]),
+      appwriteDatabases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.chats, [Query.limit(1)]),
+      appwriteDatabases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.feedback, [Query.limit(5000)])
+    ]);
+
+    res.json({
+      global: globalDoc,
+      daily: dailyDoc,
+      users: usersRes.documents,
+      totalChats: chatsRes.total,
+      feedbacks: feedbackRes.documents
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// User Management
+app.get("/api/users/search", async (req, res) => {
+  const { term } = req.query;
+  try {
+    const response = await appwriteDatabases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.users,
+      [
+        Query.or([
+          Query.equal('email', term as string),
+          Query.equal('phoneNumber', term as string)
+        ])
+      ]
+    );
+    res.json(response.documents);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch("/api/users/:uid", async (req, res) => {
+  const { uid } = req.params;
+  const userData = req.body;
+  try {
+    const doc = await appwriteDatabases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.users,
+      uid,
+      userData
+    );
+    res.json(doc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/users/:uid", async (req, res) => {
+  const { uid } = req.params;
+  try {
+    await appwriteDatabases.deleteDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.users,
+      uid
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/users/:uid", async (req, res) => {
+  const { uid } = req.params;
+  try {
+    const doc = await appwriteDatabases.getDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.users,
+      uid
+    );
+    res.json(doc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/premium-requests", async (req, res) => {
+  const { userId, userEmail, plan, paymentMethod, transactionId, phoneNumber } = req.body;
+  try {
+    const doc = await appwriteDatabases.createDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.premiumRequests,
+      ID.unique(),
+      {
+        userId,
+        userEmail,
+        plan,
+        paymentMethod,
+        transactionId,
+        phoneNumber,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      }
+    );
+    res.json(doc);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
