@@ -12,7 +12,7 @@ function cleanMessageContent(content: string) {
   // Remove common source/reference headers and everything after them
   // Also remove bracketed citations like [1], [2]
   return content
-    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|Source):[\s\S]*$/i, '')
+    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|Source|📌 Sources):[\s\S]*$/i, '')
     .replace(/\[\d+\]/g, '')
     .trim();
 }
@@ -28,52 +28,62 @@ interface ChatAreaProps {
 function SourcesToggle({ sources }: { sources: SearchSource[] }) {
   const [isOpen, setIsOpen] = useState(false);
 
+  if (!sources || sources.length === 0) return null;
+
   return (
-    <div className="w-full">
+    <div className="w-full mt-4">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "flex items-center gap-2 px-4 py-2 rounded-xl border transition-all text-[10px] font-black uppercase tracking-widest shadow-sm",
+          "flex items-center gap-2 px-5 py-2.5 rounded-2xl border transition-all text-[11px] font-black uppercase tracking-[0.1em] shadow-lg active:scale-95",
           isOpen 
-            ? "bg-primary text-white border-primary" 
-            : "bg-surface border-border text-text-muted hover:border-primary hover:text-primary"
+            ? "bg-primary text-white border-primary shadow-primary/20" 
+            : "bg-surface/80 backdrop-blur-md border-white/10 text-text-muted hover:border-primary/50 hover:text-primary hover:bg-surface"
         )}
       >
-        <Globe size={12} className={cn("transition-transform", isOpen && "rotate-12")} />
-        {isOpen ? "Hide Search Sources" : `View ${sources.length} Sources`}
+        <Globe size={14} className={cn("transition-transform duration-500", isOpen && "rotate-[360deg] text-white")} />
+        {isOpen ? "Hide Sources" : `View ${sources.length} Search Sources`}
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ height: 0, opacity: 0, y: -5 }}
+            initial={{ height: 0, opacity: 0, y: -10 }}
             animate={{ height: 'auto', opacity: 1, y: 0 }}
-            exit={{ height: 0, opacity: 0, y: -5 }}
-            className="overflow-hidden mt-3"
+            exit={{ height: 0, opacity: 0, y: -10 }}
+            className="overflow-hidden mt-4"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
               {sources.map((source, i) => (
                 <motion.a
                   key={i}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
                   href={source.link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-3 bg-surface/50 backdrop-blur-sm border border-border rounded-2xl hover:border-primary transition-all group flex flex-col gap-1.5 shadow-sm active:scale-[0.98]"
+                  className="p-4 bg-surface/40 backdrop-blur-md border border-white/5 rounded-[1.5rem] hover:border-primary/30 hover:bg-surface/60 transition-all group flex flex-col gap-2 shadow-sm active:scale-[0.98]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Globe className="text-primary w-3 h-3" />
+                      <div className="w-6 h-6 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                        <Globe className="text-primary w-3.5 h-3.5" />
                       </div>
-                      <span className="text-[9px] text-text-muted truncate uppercase tracking-widest font-black">Source {i + 1}</span>
+                      <span className="text-[10px] text-text-muted truncate uppercase tracking-widest font-black opacity-60 group-hover:opacity-100">Source {i + 1}</span>
                     </div>
-                    <ExternalLink className="text-text-muted group-hover:text-primary w-3 h-3" />
+                    <ExternalLink className="text-text-muted group-hover:text-primary w-3.5 h-3.5 transition-colors" />
                   </div>
-                  <h4 className="text-xs font-bold line-clamp-2 group-hover:text-primary leading-tight">{source.title}</h4>
-                  <p className="text-[10px] text-text-muted/60 truncate font-medium">{new URL(source.link).hostname}</p>
+                  <h4 className="text-sm font-bold line-clamp-2 group-hover:text-primary leading-snug transition-colors">{source.title}</h4>
+                  <div className="flex items-center gap-1.5">
+                    <img 
+                      src={`https://www.google.com/s2/favicons?domain=${new URL(source.link).hostname}&sz=32`} 
+                      alt="" 
+                      className="w-3 h-3 rounded-sm opacity-60"
+                      referrerPolicy="no-referrer"
+                    />
+                    <p className="text-[10px] text-text-muted/60 truncate font-bold uppercase tracking-tighter">{new URL(source.link).hostname}</p>
+                  </div>
                 </motion.a>
               ))}
             </div>

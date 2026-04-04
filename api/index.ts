@@ -559,26 +559,78 @@ app.post("/api/search", async (req, res) => {
   const groq = new Groq({ apiKey: GROQ_API_KEY });
 
   try {
-    const lowerQuery = query.toLowerCase().trim();
-    const greetings = ["hi", "hello", "hey", "namaste", "salaam", "kaise ho", "how are you", "who are you", "what is your name", "kya haal hai", "good morning", "good afternoon", "good evening", "bye", "thanks", "thank you", "hi dibakar", "hello dibakar", "hey dibakar", "dibakar ai", "who made you"];
-    const isGreeting = lowerQuery.length < 25 && (greetings.some(g => lowerQuery.includes(g)) || lowerQuery.split(' ').length <= 2);
+    // 1. Classify Query (Casual vs Search)
+    const classification = await groq.chat.completions.create({
+      messages: [
+        { 
+          role: "system", 
+          content: "You are a query classifier. Reply with ONLY 'casual' if the user is sending a greeting, chitchat, or informal message. Reply with ONLY 'search' if the user is asking a real question that needs information or facts. No other words." 
+        },
+        { role: "user", content: query }
+      ],
+      model: "llama-3.1-8b-instant",
+      temperature: 0,
+      max_tokens: 5
+    });
+
+    const category = classification.choices[0]?.message?.content?.toLowerCase().trim() || "search";
+    const isGreeting = category === "casual";
 
     let context = "";
     let sources: any[] = [];
 
+    // 2. Perform Search if needed
     if (!isGreeting) {
       try {
-        const serperRes = await axios.post("https://google.serper.dev/search", { q: query, num: 3 }, { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 8000 });
-        sources = serperRes.data.organic || [];
-        context = sources.map((s: any, i: number) => `Source [${i + 1}]: ${s.title}\nURL: ${s.link}\nSnippet: ${s.snippet}`).join("\n\n");
-      } catch (serperErr) {}
+        const serperRes = await axios.post("https://google.serper.dev/search", 
+          { q: query, num: 4 }, 
+          { 
+            headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, 
+            timeout: 8000 
+          }
+        );
+        sources = (serperRes.data.organic || []).slice(0, 4);
+        
+        if (sources.length > 0) {
+          context = '=== TOP SEARCH RESULTS ===\n\n';
+          sources.forEach((s: any, i: number) => {
+            context += `--- Result #${i + 1} ---\n`;
+            context += `Title: ${s.title}\n`;
+            context += `URL: ${s.link}\n`;
+            context += `Content: ${s.snippet}\n\n`;
+          });
+        } else {
+          context = "No search results found. Please answer from your own knowledge.";
+        }
+      } catch (serperErr) {
+        console.error("Serper Error:", serperErr);
+        context = "Search failed. Please answer from your own knowledge.";
+      }
     }
 
-    const systemInstruction = `You are Dibakar AI. Synthesize the web context into a structured, accurate answer using markdown. Always reply in the exact same language the user typed in (Hindi, Bengali, or English). If context is provided, use it. If not, answer directly as a helpful AI assistant. Put the source links at the end if context was used.\n\nContext:\n${context || "No web context needed for this query."}`;
+    // 3. Generate Final Answer
+    const systemInstruction = isGreeting 
+      ? `Tu Dibakar AI Brain hai. Ek smart aur friendly assistant. Seedha point pe aa. Chhota jawab de. 1-2 line kaafi hai greeting ke liye. Natural baat kar jaise ek dost se baat kar raha hai. User jis bhasha mein bole usi mein bol.`
+      : `Tu Dibakar AI Brain hai - Perplexity jaisa powerful search assistant. Tujhe top search results milte hain user ke sawaal ke baare mein. Tera kaam hai:
+1. Search results ka data dhyan se padh.
+2. Apni knowledge bhi jod.
+3. EK simple aur clear jawab bana.
+4. HAMESHA bahut asan aur simple language mein jawab de (Hindi/Hinglish/English).
+5. Bullet points use kar taaki padhne mein aasani ho.
+6. Markdown formatting ka use kar (Bold, Lists, etc).
+7. Agar context use kiya hai, to last mein sources ka zikr kar (📌 Sources:).
+
+Context:
+${context || "No web context available. Answer from your own knowledge."}`;
 
     const chatCompletion = await groq.chat.completions.create({
-      messages: [{ role: "system", content: systemInstruction }, ...history.map((h: any) => ({ role: h.role, content: h.content })), { role: "user", content: query }],
+      messages: [
+        { role: "system", content: systemInstruction }, 
+        ...history.map((h: any) => ({ role: h.role, content: h.content })), 
+        { role: "user", content: query }
+      ],
       model: "llama-3.3-70b-versatile",
+      temperature: 0.5,
     }, { timeout: 25000 });
 
     const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
@@ -618,9 +670,14 @@ app.post("/api/search", async (req, res) => {
       await Promise.all([updateStats(`daily_${today}`), updateStats('global')]);
     } catch (dbErr) {}
 
-    res.json({ answer, sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })), usage: { llamaTokens, serperRequests: context ? 1 : 0 } });
+    res.json({ 
+      answer, 
+      sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })), 
+      usage: { llamaTokens, serperRequests: context ? 1 : 0 } 
+    });
   } catch (error: any) {
-    res.status(500).json({ error: "Failed to process search" });
+    console.error("Search API Error Vercel:", error.message);
+    res.status(500).json({ error: "Failed to process search request" });
   }
 });
 
