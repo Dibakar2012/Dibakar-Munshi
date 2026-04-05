@@ -608,7 +608,7 @@ app.post("/api/search", async (req, res) => {
       }
     }
 
-    // 3. Generate Final Answer
+    // 3. Generate Final Answer with Streaming
     const systemInstruction = isGreeting 
       ? `Tu Dibakar AI Brain hai. Ek smart aur friendly assistant. Seedha point pe aa. Chhota jawab de. 1-2 line kaafi hai greeting ke liye. Natural baat kar jaise ek dost se baat kar raha hai. User jis bhasha mein bole usi mein bol.`
       : `Tu Dibakar AI Brain hai - Perplexity jaisa powerful search assistant. Tujhe top search results milte hain user ke sawaal ke baare mein. Tera kaam hai:
@@ -623,61 +623,95 @@ app.post("/api/search", async (req, res) => {
 Context:
 ${context || "No web context available. Answer from your own knowledge."}`;
 
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [
-        { role: "system", content: systemInstruction }, 
-        ...history.map((h: any) => ({ role: h.role, content: h.content })), 
-        { role: "user", content: query }
-      ],
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.5,
-    }, { timeout: 25000 });
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for SSE
+    
+    // Send initial heartbeat to flush headers
+    res.write(': heartbeat\n\n');
 
-    const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
-    const llamaTokens = chatCompletion.usage?.total_tokens || 0;
-
-    // Record Usage in Appwrite
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const updateStats = async (docId: string) => {
-        try {
-          let doc;
-          try {
-            doc = await appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId);
-          } catch (err: any) {
-            if (err.code === 404) {
-              await appwriteDatabases.createDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
-                totalRequests: 1,
-                llamaTokens: llamaTokens,
-                serperRequests: context ? 1 : 0,
-                lastUpdated: new Date().toISOString(),
-                date: today
-              });
-              return;
-            }
-            throw err;
-          }
-          await appwriteDatabases.updateDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
-            totalRequests: (doc.totalRequests || 0) + 1,
-            llamaTokens: (doc.llamaTokens || 0) + llamaTokens,
-            serperRequests: (doc.serperRequests || 0) + (context ? 1 : 0),
-            lastUpdated: new Date().toISOString()
-          });
-        } catch (innerErr: any) {
-          console.error(`[Appwrite Vercel Stats] Error updating ${docId}:`, innerErr.message);
-        }
-      };
-      await Promise.all([updateStats(`daily_${today}`), updateStats('global')]);
-    } catch (dbErr) {}
+      const stream = await groq.chat.completions.create({
+        messages: [
+          { role: "system", content: systemInstruction }, 
+          ...history.map((h: any) => ({ role: h.role, content: h.content })), 
+          { role: "user", content: query }
+        ],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.5,
+        stream: true,
+      });
 
-    res.json({ 
-      answer, 
-      sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })), 
-      usage: { llamaTokens, serperRequests: context ? 1 : 0 } 
-    });
+      let fullAnswer = "";
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          fullAnswer += content;
+          res.write(`data: ${JSON.stringify({ type: 'content', delta: content })}\n\n`);
+        }
+      }
+
+      console.log(`[Search API] Stream finished. Length: ${fullAnswer.length}`);
+      
+      // Record Usage in Appwrite (Background)
+      const recordUsage = async () => {
+        try {
+          const today = new Date().toISOString().split('T')[0];
+          const updateStats = async (docId: string) => {
+            try {
+              let doc;
+              try {
+                doc = await appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId);
+              } catch (err: any) {
+                if (err.code === 404) {
+                  await appwriteDatabases.createDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
+                    totalRequests: 1,
+                    llamaTokens: 0,
+                    serperRequests: context ? 1 : 0,
+                    lastUpdated: new Date().toISOString(),
+                    date: today
+                  });
+                  return;
+                }
+                throw err;
+              }
+              await appwriteDatabases.updateDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
+                totalRequests: (doc.totalRequests || 0) + 1,
+                llamaTokens: (doc.llamaTokens || 0) + 0,
+                serperRequests: (doc.serperRequests || 0) + (context ? 1 : 0),
+                lastUpdated: new Date().toISOString()
+              });
+            } catch (innerErr: any) {
+              console.error(`[Appwrite Vercel Stats] Error updating ${docId}:`, innerErr.message);
+            }
+          };
+          await Promise.all([updateStats(`daily_${today}`), updateStats('global')]);
+        } catch (dbErr) {}
+      };
+      recordUsage();
+
+      // Send final metadata
+      res.write(`data: ${JSON.stringify({ 
+        type: 'done', 
+        sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })),
+        fullAnswer
+      })}\n\n`);
+    } catch (streamErr: any) {
+      console.error("[Search API] Streaming Error:", streamErr.message);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: streamErr.message })}\n\n`);
+    } finally {
+      res.end();
+    }
   } catch (error: any) {
     console.error("Search API Error Vercel:", error.message);
-    res.status(500).json({ error: "Failed to process search request" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to process search request" });
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+      res.end();
+    }
   }
 });
 

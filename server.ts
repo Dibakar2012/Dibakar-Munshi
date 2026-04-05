@@ -329,6 +329,144 @@ const startServer = async () => {
     });
   });
 
+  // Streaming AI Route
+  app.post("/api/ai/stream", async (req, res) => {
+    const { query, history = [] } = req.body;
+    if (!query) return res.status(400).json({ error: "Query is required" });
+    if (!GROQ_API_KEY || !SERPER_API_KEY) {
+      return res.status(500).json({ error: "API keys are missing." });
+    }
+
+    const groq = new Groq({ apiKey: GROQ_API_KEY });
+
+    // Set headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+      const input = query.toLowerCase().trim();
+
+      // 1. SmartRouter Logic (from user JSON)
+      const greetingWords = ['hi', 'hello', 'hey', 'namaste', 'namaskar', 'good morning', 'good evening', 'good night', 'good afternoon', 'bye', 'alvida', 'thanks', 'shukriya', 'dhanyavad', 'thank you', 'ok', 'okay', 'haan', 'nahi', 'theek hai', 'accha', 'hmm', 'hii', 'helo', 'helloo', 'hiii', 'hiiii', 'yo', 'sup', 'wassup'];
+      const fillerWords = ['bhai', 'bro', 'dost', 'yaar', 'ji', 'sir', 'madam', 'boss', 'buddy', 'friend', 'dear', 'vai', 'da', 'di', 're', 'be'];
+      
+      const words = input.replace(/[!?.,]+/g, '').split(/\s+/).filter(w => w.length > 0);
+      const meaningfulWords = words.filter(w => !fillerWords.includes(w));
+      const isGreeting = meaningfulWords.length <= 2 && meaningfulWords.some(w => greetingWords.includes(w));
+
+      const casualPatterns = [
+        /tujhe kisne banaya/i, /tera naam/i, /tu kaun/i, /who made you/i, /your name/i, /who are you/i,
+        /what is your name/i, /what's your name/i, /apka naam/i, /aapka naam/i,
+        /dibakar (kaun|kon|ke baare|ka birthday|ki birthday|ke papa|ki mummy|ki bahan|ki sister|munshi)/i,
+        /dibakar ke bare/i, /dibakar ko kisne/i, /tell me about dibakar/i,
+        /kaise ho/i, /kya haal/i, /how are you/i, /kya chal raha/i,
+        /creator/i, /banane wala/i, /made you/i, /created you/i, /built you/i,
+        /^(kya|kaise|kaisa) (hai|ho|chal).*$/i
+      ];
+
+      const isCasualPattern = casualPatterns.some(pattern => pattern.test(input));
+      const isCasual = isGreeting || isCasualPattern;
+
+      if (isCasual) {
+        // CasualAgent Path
+        const stream = await groq.chat.completions.create({
+          messages: [
+            { 
+              role: "system", 
+              content: `Tu Dibakar AI Brain hai. Tujhe Dibakar Munshi ne banaya hai.
+===== DIBAKAR MUNSHI KI INFO =====
+- Naam: Dibakar Munshi
+- Kaun hai: Ek student hai
+- Date of Birth: 4 September 2012
+- Father ka naam: Kartick Munshi
+- Mother ka naam: Dipa Munshi
+- Chhoti Bahan ka naam: Mousumi Munshi
+- Usne tujhe (Dibakar AI Brain ko) banaya hai
+================================
+STRICT RULES:
+1. SIRF upar wali info use kar.
+2. Chhota jawab de. Max 2-3 line.
+3. User ki bhasha mein bol.` 
+            },
+            ...history.map((h: any) => ({ role: h.role, content: h.content })),
+            { role: "user", content: query }
+          ],
+          model: "llama-3.1-8b-instant",
+          stream: true,
+          temperature: 0.1,
+        });
+
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+        }
+      } else {
+        // Search Path
+        res.write(`data: ${JSON.stringify({ text: "🔍 Searching the web..." })}\n\n`);
+
+        const serperRes = await axios.post(
+          "https://google.serper.dev/search",
+          { q: query, num: 3 },
+          { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 5000 }
+        ).catch(() => ({ data: { organic: [] } }));
+
+        const sources = serperRes.data.organic || [];
+        const context = sources.map((s: any, i: number) => `--- Result #${i+1} ---\nTitle: ${s.title}\nURL: ${s.link}\nContent: ${s.snippet}`).join("\n\n");
+        
+        // Difficulty Check (from user JSON)
+        const hardKeywords = ['explain', 'analyze', 'analyse', 'compare', 'difference', 'vs', 'versus', 'science', 'physics', 'chemistry', 'biology', 'math', 'mathematics', 'quantum', 'relativity', 'algorithm', 'programming', 'code', 'philosophy', 'psychology', 'economics', 'theory', 'detail', 'detailed', 'in-depth', 'comprehensive', 'elaborate', 'how does', 'how do', 'why does', 'why do', 'mechanism', 'samjhao', 'samjha do', 'detail mein', 'achhe se', 'pura batao', 'bishoy', 'byakhya', 'difference between', 'climate change', 'artificial intelligence', 'machine learning', 'blockchain', 'cryptocurrency', 'geopolitics', 'nuclear', 'constitution', 'amendment', 'supreme court', 'medical', 'disease', 'treatment', 'diagnosis', 'research', 'study', 'paper', 'thesis', 'history of', 'origin of', 'evolution of', 'architecture', 'engineering', 'space', 'nasa', 'isro'];
+        const isHard = hardKeywords.some(kw => input.includes(kw)) || query.split(' ').length > 12;
+        
+        res.write(`data: ${JSON.stringify({ text: "", sources: sources.map((s: any) => ({ title: s.title, link: s.link })) })}\n\n`);
+
+        const model = isHard ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
+        const systemPrompt = isHard 
+          ? `Tu Dibakar AI Brain hai — Dibakar Munshi ka banaya hua ADVANCED AI assistant.
+TERA KAAM:
+1. Search data dhyan se padh.
+2. EXPERT-LEVEL jawab de.
+FORMAT:
+📝 **Jawab:** (3-4 line main answer)
+📋 **Detail mein samjho:** (Bullet points, 2-3 lines each)
+💡 **Kya Interesting Hai:** (Fascinating facts)`
+          : `Tu Dibakar AI Brain hai — Dibakar Munshi ka banaya hua smart AI assistant.
+TERA KAAM:
+1. Search data padh kar accurate jawab de.
+FORMAT:
+📝 **Seedha Jawab:** (2-3 line main answer)
+📋 **Detail mein:** (Bullet points)
+💡 **Extra Info:** (Interesting info)`;
+
+        const stream = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...history.map((h: any) => ({ role: h.role, content: h.content })),
+            { role: "user", content: `User ka sawaal: ${query}\n\n${context}` }
+          ],
+          model: model,
+          stream: true,
+          temperature: 0.4,
+        });
+
+        let firstChunk = true;
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            res.write(`data: ${JSON.stringify({ text: content, replace: firstChunk })}\n\n`);
+            firstChunk = false;
+          }
+        }
+      }
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (error: any) {
+      console.error("Streaming error:", error);
+      res.write(`data: ${JSON.stringify({ error: "Internal error" })}\n\n`);
+      res.end();
+    }
+  });
+
   // User Sync Route
   app.post("/api/user/sync", async (req, res) => {
     const { uid, email, name } = req.body;
@@ -949,7 +1087,7 @@ const startServer = async () => {
         messages: [
           {
             role: "system",
-            content: "You are a query classifier. Your ONLY job is to classify the user's message into exactly one category. Reply with ONLY one word - nothing else:\n- Reply 'casual' if the user is sending a greeting, chitchat, hi, hello, namaste, thanks, bye, good morning, or any informal non-question message. ALSO include identity questions like 'who are you', 'tum kon ho', 'aapka naam kya hai', etc.\n- Reply 'search' if the user is asking a real question that needs information, facts, news, how-to, or web search\n\nIMPORTANT: Reply with ONLY the single word 'casual' or 'search'. No explanation, no punctuation, no other text."
+            content: "Tu ek message classifier hai. Sirf EK word reply kar: 'casual' ya 'search'.\n\nCASUAL - YE SIRF casual hai:\n- Greetings: hi, hello, hey, namaste, good morning, bye, thanks\n- Personal questions about YOU: tera naam kya, tujhe kisne banaya, tu kaun hai\n- Personal questions about DIBAKAR MUNSHI: Dibakar kaun hai, Dibakar ke baare mein batao, Dibakar ka birthday\n- Chhoti baatein: ok, haan, nahi, theek hai, accha, hmm\n- Praise/compliment about the AI\n\nSEARCH - Baaki SAB KUCH search hai:\n- Koi bhi sawaal jisme kab, kaun, kya, kahan, kaise, kyun ho\n- IPL, cricket, sports, news, weather, prices, dates, events\n- Science, math, history, geography, technology\n- How to, tutorial, explanation\n- Koi bhi topic jisme FACTS chahiye\n- Current events, politics, entertainment, movies, songs\n- ANY question that needs real-world information\n\nIMPORTANT:\n- Sirf EK word: 'casual' ya 'search'\n- Agar DOUBT ho to 'search' bol (ALWAYS default to search)\n- Sirf greetings aur Dibakar/creator ke sawaal hi casual hain\n- Baaki SAB KUCH search hai — chahe Hindi, English, Bengali, kuch bhi ho"
           },
           { role: "user", content: query }
         ],
@@ -972,13 +1110,13 @@ const startServer = async () => {
           messages: [
             {
               role: "system",
-              content: "Tu Dibakar AI Brain hai. Ek smart aur friendly assistant.\n\nRULES:\n- Seedha point pe aa. Faltu bakwaas mat kar.\n- Chhota jawab de. 1-2 line kaafi hai greeting ke liye.\n- Natural baat kar jaise ek dost se baat kar raha hai.\n- User jis bhasha mein bole usi mein bol.\n- Apna naam 'Dibakar AI Brain' bata agar pehli baar baat ho.\n- Fokat ka gyaan mat de. Bas pooch kya help chahiye.\n\nEXAMPLES:\n- User: hi → Tu: Hey! Main Dibakar AI Brain hoon. Bata kya jaanna hai?\n- User: hello → Tu: Hello! Kya help chahiye?\n- User: namaste → Tu: Namaste! Batao kya search karna hai?\n- User: kaise ho → Tu: Badhiya hoon! Bol kya karna hai?\n- User: thanks → Tu: Welcome! Aur kuch poochna ho to bol.\n- User: bye → Tu: Bye! Phir aana jab zaroorat ho."
+              content: "Tu Dibakar AI Brain hai. Tujhe Dibakar Munshi ne banaya hai.\n\n===== DIBAKAR MUNSHI KI INFO =====\n- Naam: Dibakar Munshi\n- Kaun hai: Ek student hai\n- Date of Birth: 4 September 2012\n- Father ka naam: Kartick Munshi\n- Mother ka naam: Dipa Munshi\n- Chhoti Bahan ka naam: Mousumi Munshi\n- Usne tujhe (Dibakar AI Brain ko) banaya hai\n================================\n\n⚠️ STRICT RULES:\n1. SIRF upar wali info use kar. Apne se KUCH BHI mat banao.\n2. Jo info upar nahi hai wo mat bol. Bol 'mujhe ye nahi pata'.\n3. Chhota jawab de. Max 2-3 line.\n4. User ki bhasha mein bol.\n5. Bakwaas mat kar. Seedha point pe aa.\n6. Kabhi galat info mat de. Agar nahi pata to bol 'mujhe ye info nahi di gayi hai'.\n\n===== EXACT ANSWERS (in jaisa hi jawab de) =====\n\nQ: hi / hello / hey / namaste\nA: Hey! Main Dibakar AI Brain hoon. Bol kya jaanna hai?\n\nQ: tujhe kisne banaya / tera creator kaun hai / who made you\nA: Mujhe Dibakar Munshi ne banaya hai! Wo ek student hain.\n\nQ: Dibakar kaun hai / Dibakar Munshi kaun hai / Dibakar ke baare mein batao / tell me about Dibakar\nA: Dibakar Munshi ek student hain jinki date of birth 4 September 2012 hai. Unke papa ka naam Kartick Munshi hai, mummy ka naam Dipa Munshi hai, aur chhoti bahan ka naam Mousumi Munshi hai. Unhone hi mujhe banaya hai!\n\nQ: Dibakar ka birthday kab hai / DOB\nA: Dibakar Munshi ka birthday 4 September 2012 ko hai.\n\nQ: Dibakar ke papa kaun hai / father\nA: Dibakar Munshi ke papa ka naam Kartick Munshi hai.\n\nQ: Dibakar ki mummy kaun hai / mother\nA: Dibakar Munshi ki mummy ka naam Dipa Munshi hai.\n\nQ: Dibakar ki bahan kaun hai / sister\nA: Dibakar Munshi ki chhoti bahan ka naam Mousumi Munshi hai.\n\nQ: tu kaun hai / tera naam kya hai / what is your name\nA: Main Dibakar AI Brain hoon — ek smart AI assistant. Mujhe Dibakar Munshi ne banaya hai!\n\nQ: kaise ho / kya haal hai\nA: Badhiya! Bol kya help chahiye?\n\nQ: thanks / shukriya / dhanyavad\nA: Welcome! Aur kuch puchna ho to bol.\n\nQ: bye / alvida\nA: Bye! Jab zaroorat ho aana.\n\nQ: kuch aur personal question jiska jawab upar nahi hai\nA: Ye info mere paas nahi hai. Aur kuch puchna ho to bol!\n================================"
             },
             ...history.map((h: any) => ({ role: h.role, content: h.content })),
             { role: "user", content: query }
           ],
           model: "llama-3.1-8b-instant",
-          temperature: 0.3,
+          temperature: 0.1,
         });
         answer = casualCompletion.choices[0]?.message?.content || "";
         llamaTokens += casualCompletion.usage?.total_tokens || 0;
@@ -1000,7 +1138,7 @@ const startServer = async () => {
 
           sources = serperRes.data.organic || [];
           
-          // 3b. CleanData (Logic from JSON)
+          // 3b. CleanData
           if (sources.length > 0) {
             context = "=== TOP 3 SEARCH RESULTS ===\n\n";
             sources.slice(0, 3).forEach((item: any, index: number) => {
@@ -1018,57 +1156,126 @@ const startServer = async () => {
           context = "Search failed. Please answer from your own knowledge.";
         }
 
-        // 3c. SearchAgent
-        console.log("Calling SearchAgent...");
-        const searchCompletion = await groq.chat.completions.create({
-          messages: [
-            {
-              role: "system",
-              content: `Tu Dibakar AI Brain hai - Perplexity jaisa powerful search assistant. Tujhe top 3 websites ke results milte hain user ke sawaal ke baare mein. Tera kaam hai:
+        // 3c. DifficultyCheck
+        const questionLower = query.toLowerCase();
+        const hardKeywords = [
+          'explain', 'analyze', 'analyse', 'compare', 'difference', 'vs', 'versus',
+          'science', 'physics', 'chemistry', 'biology', 'math', 'mathematics',
+          'quantum', 'relativity', 'algorithm', 'programming', 'code',
+          'philosophy', 'psychology', 'economics', 'theory',
+          'detail', 'detailed', 'in-depth', 'comprehensive', 'elaborate',
+          'how does', 'how do', 'why does', 'why do', 'mechanism',
+          'samjhao', 'samjha do', 'detail mein', 'achhe se', 'pura batao',
+          'bishoy', 'byakhya', 'difference between',
+          'climate change', 'artificial intelligence', 'machine learning',
+          'blockchain', 'cryptocurrency', 'geopolitics', 'nuclear',
+          'constitution', 'amendment', 'supreme court',
+          'medical', 'disease', 'treatment', 'diagnosis',
+          'research', 'study', 'paper', 'thesis',
+          'history of', 'origin of', 'evolution of',
+          'architecture', 'engineering', 'space', 'nasa', 'isro'
+        ];
+        const isHard = hardKeywords.some(kw => questionLower.includes(kw));
+        const isLong = query.split(' ').length > 12;
+        const isMultiPart = /\b(and|aur|our|also|bhi|saath|compare|vs)\b/i.test(query);
+        const difficulty = (isHard || isLong || isMultiPart) ? 'hard' : 'easy';
+        console.log(`DifficultyCheck: ${difficulty}`);
 
+        // 3d. Agent Selection
+        const systemPrompt = difficulty === 'hard' 
+          ? `Tu Dibakar AI Brain hai — ek advanced AI assistant jo Dibakar Munshi ne banaya hai. Tu Llama powered powerful AI model hai.
+
+Tujhe 3 websites ka data mila hai ek mushkil sawaal ke baare mein. Ye sawaal complex hai, isliye tera jawab BAHUT DETAILED aur ACCURATE hona chahiye.
+
+TERA KAAM:
+1. Teeno websites ka data BAHUT DHYAN se padh
+2. Apni deep knowledge bhi use kar
+3. Ek EXPERT-LEVEL jawab de jo sab kuch cover kare
+
+ANSWER FORMAT:
+📝 **Jawab:** (3-4 line mein clear main answer)
+
+📋 **Detail mein samjho:**
+• Point 1 — detail ke saath (2-3 line explain kar)
+• Point 2 — detail ke saath
+• Point 3 — detail ke saath
+• Point 4 — agar zaroorat ho
+• Point 5 — agar zaroorat ho
+• Point 6 — agar zaroorat ho
+
+💡 **Interesting Facts:** (kuch extra interesting baatein jo log nahi jaante)
+
+📌 **Sources:**
+1. [website name](link)
+2. [website name](link)
+3. [website name](link)
+
+LANGUAGE RULES:
+- User ki bhasha mein jawab de (Hindi/Hinglish/English/Bengali)
+- Simple words use kar — par DETAIL mein samjha
+- Har point ko acha se explain kar — 1-2 line per point
+- Minimum 12-15 lines ka jawab hona chahiye
+- Numbers, dates, facts clearly mention kar
+- Scientific terms ko simple mein samjha de
+- KABHI galat info mat de. Agar nahi pata to honestly bol.`
+          : `Tu Dibakar AI Brain hai. Tujhe Dibakar Munshi ne banaya hai. Tu Perplexity jaisa search assistant hai.
+
+Tujhe 3 websites ka data mila hai user ke sawaal ke baare mein.
+
+TERA KAAM:
 1. Teeno websites ka data dhyan se padh
 2. Apni knowledge bhi jod
-3. EK simple aur clear jawab bana
+3. Ek DETAILED aur COMPLETE jawab de
 
-LANGUAGE RULES (BAHUT IMPORTANT):
-- HAMESHA bahut asan aur simple language mein jawab de
-- Jaise kisi chhote bachche ko samjha raha ho
-- Koi mushkil ya technical word mat use kar
-- Chhote chhote sentences likh - ek line mein ek baat
-- User jis language mein bole usi mein jawab de (Hindi/Hinglish/English)
-- Agar English mein bhi jawab de raha hai to simple English use kar
-- Bullet points use kar taaki padhne mein aasani ho
+ANSWER FORMAT:
+📝 **Seedha Jawab:** (2-3 line mein main answer)
 
-FORMAT:
-- Pehle seedha jawab de (2-3 line mein main point)
-- Phir thoda detail mein samjha (bullet points mein)
-- Last mein sources daal with links:
-  📌 Sources:
-  1. [website name](link)
-  2. [website name](link)
-  3. [website name](link)
+📋 **Detail mein:**
+• Point 1 - detail ke saath samjha
+• Point 2 - detail ke saath samjha
+• Point 3 - detail ke saath samjha
+• Point 4 - agar ho to
+• Point 5 - agar ho to
+• Point 6 - agar zaroorat ho
 
-- Kabhi bhi ads ya promotional content mat daal
+💡 **Extra Info:** (agar kuch interesting additional info ho to daal)
 
-Context:
-${context}`
-            },
+📌 **Sources:**
+1. [website name](link)
+2. [website name](link)
+3. [website name](link)
+
+LANGUAGE RULES:
+- User jis bhasha mein bole usi mein jawab de
+- Simple aur asan language use kar — mushkil words mat daal
+- Par DETAIL mein jawab de — chhota mat de
+- Har point ko acha se samjha — sirf ek line ka point nahi, 1-2 line mein har point explain kar
+- Numbers, dates, names sab clearly mention kar
+- Agar data mein sahi info nahi mili to honestly bol
+
+STRICT RULES:
+- KABHI galat ya purani info mat de
+- Ads ya promotional content mat daal
+- Apne se info mat banao — sirf websites ka data + teri knowledge use kar
+- DETAILED jawab de — short/chhota jawab KABHI mat de
+- Minimum 8-10 lines ka jawab hona chahiye`;
+
+        const model = difficulty === 'hard' ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
+        
+        console.log(`Calling ${difficulty === 'hard' ? 'DeepAgent' : 'SearchAgent'}...`);
+        const searchCompletion = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
             ...history.map((h: any) => ({ role: h.role, content: h.content })),
-            { role: "user", content: `User ka sawaal: ${query}` }
+            { role: "user", content: `User ka sawaal: ${query}\n\n${context}` }
           ],
-          model: "llama-3.1-8b-instant",
-          temperature: 0.3,
+          model: model,
+          temperature: 0.4,
         });
 
         answer = searchCompletion.choices[0]?.message?.content || "";
         llamaTokens += searchCompletion.usage?.total_tokens || 0;
       }
-
-      // Post-process to remove any accidental sources section
-      const cleanAnswer = answer
-        .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|📌 Sources):[\s\S]*$/i, '')
-        .replace(/\[\d+\]/g, '')
-        .trim();
 
       console.log("Response generated successfully");
 
@@ -1132,7 +1339,7 @@ ${context}`
       }
 
       res.json({
-        answer: cleanAnswer,
+        answer: answer,
         sources: sources.map((s: any) => ({ title: s.title, link: s.link, snippet: s.snippet })),
         usage: {
           llamaTokens,

@@ -121,11 +121,14 @@ export default function SearchBar({ onSearch, disabled, chatId }: SearchBarProps
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (query.trim() && !disabled) {
-      onSearch(query.trim());
+    const trimmedQuery = query.trim();
+    if (trimmedQuery && !disabled) {
       setQuery('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
+      }
+      onSearch(trimmedQuery);
+      if (textareaRef.current) {
         textareaRef.current.focus();
       }
     }

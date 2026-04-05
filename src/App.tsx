@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './lib/firebase';
 import { databases, APPWRITE_CONFIG, ID, Query } from './lib/appwrite';
-import { generateSearchResponse, generateChatTitle } from './lib/geminiService';
-import { UserProfile, Chat, Message, SearchResponse } from './types';
+import { generateSearchResponse, generateChatTitle } from './lib/groqService';
+import { processAIRequest } from './services/aiService';
+import { UserProfile, Chat, Message, SearchResponse, SearchSource } from './types';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import SearchBar from './components/SearchBar';
@@ -23,6 +24,7 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [streamingResponse, setStreamingResponse] = useState<{ content: string; sources: SearchSource[] } | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -86,8 +88,27 @@ export default function App() {
         onAuthStateChanged(auth, async (firebaseUser) => {
           if (firebaseUser) {
             console.log('Firebase user found:', firebaseUser.email);
-            // Sync user profile with Appwrite via backend
-            await syncUserProfile(firebaseUser);
+            
+            // Optimistic: Set a temporary user profile from Firebase data to unblock UI
+            const tempUser: UserProfile = {
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || 'User',
+              email: firebaseUser.email || '',
+              role: 'user', // Default
+              credits: 0,
+              createdAt: new Date().toISOString(),
+              isVirtual: true // Mark as virtual until synced
+            };
+            setUser(tempUser);
+            setLoading(false); // Unblock UI immediately
+            setIsAuthReady(true);
+            
+            // Sync in background
+            try {
+              await syncUserProfile(firebaseUser);
+            } catch (syncErr) {
+              console.error('Background sync failed:', syncErr);
+            }
           } else {
             console.log('No active Firebase session');
             setUser(null);
@@ -118,7 +139,8 @@ export default function App() {
         const data = await response.json();
         
         if (!response.ok) {
-          throw new Error(data.error || 'Failed to sync user profile');
+          console.warn('Sync warning:', data.error);
+          return;
         }
         
         const doc = data;
@@ -141,12 +163,8 @@ export default function App() {
         }
 
         setUser(userProfile);
-        setIsAuthReady(true);
-        setLoading(false);
       } catch (err: any) {
         console.error('Error syncing user profile:', err);
-        setError(`Sync Error: ${err.message}`);
-        setLoading(false);
       }
     }
 
@@ -226,135 +244,143 @@ export default function App() {
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
     try {
-      // 1. Create new chat if none selected
+      // 1. Generate a temporary ID for immediate UI feedback
+      const tempChatId = chatId || 'temp_' + Date.now();
       if (!chatId) {
-        if (user && !user.isVirtual) {
-          const res = await fetch('/api/chats', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.uid,
-              title: queryText.slice(0, 40) + (queryText.length > 40 ? '...' : '')
-            })
-          });
-          const chatDoc = await res.json();
-          chatId = chatDoc.$id;
-          setCurrentChatId(chatId);
-        } else {
-          // Virtual mode: use a temporary ID
-          chatId = 'virtual_' + Date.now();
-          setCurrentChatId(chatId);
-          setVirtualMessages([]);
+        setCurrentChatId(tempChatId);
+      }
+
+      // 2. Start AI Request immediately (Don't wait for DB)
+      let finalContent = "";
+      let finalSources: SearchSource[] = [];
+      let assistantMsgId: string | null = null;
+
+      const aiPromise = processAIRequest(
+        queryText,
+        async (chunkText) => {
+          finalContent = chunkText;
+          setStreamingResponse({ content: finalContent, sources: finalSources });
+          
+          // Update UI for virtual/temp state
+          if (!user || user.isVirtual || tempChatId.startsWith('temp_')) {
+            setVirtualMessages(prev => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === 'assistant' && last.id.startsWith('vmsg_assistant_')) {
+                return [...prev.slice(0, -1), { ...last, content: finalContent }];
+              } else {
+                return [...prev, {
+                  id: 'vmsg_assistant_' + Date.now(),
+                  chatId: tempChatId,
+                  role: 'assistant',
+                  content: finalContent,
+                  sources: finalSources,
+                  createdAt: new Date().toISOString()
+                }];
+              }
+            });
+          }
+        },
+        (sources) => {
+          finalSources = sources;
+          setStreamingResponse(prev => prev ? { ...prev, sources: finalSources } : { content: "", sources: finalSources });
         }
-      } else if (user && !user.isVirtual) {
-        // Update existing chat's updatedAt (don't await, it's not critical for search)
-        fetch(`/api/chats/${chatId}`, {
-          method: 'PATCH',
+      );
+
+      // 3. Handle Database Sync in the background
+      const dbSyncPromise = (async () => {
+        if (!user || user.isVirtual) {
+          // Virtual mode: just add user message locally
+          const userMsg: Message = {
+            id: 'vmsg_user_' + Date.now(),
+            chatId: tempChatId,
+            role: 'user',
+            content: queryText,
+            createdAt: new Date().toISOString()
+          };
+          setVirtualMessages(prev => [...prev, userMsg]);
+          return tempChatId;
+        }
+
+        let realChatId = chatId;
+        // Create chat if needed
+        if (!realChatId) {
+          try {
+            const res = await fetch('/api/chats', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: user.uid,
+                title: queryText.slice(0, 40) + (queryText.length > 40 ? '...' : '')
+              })
+            });
+            const chatDoc = await res.json();
+            realChatId = chatDoc.$id;
+            setCurrentChatId(realChatId);
+          } catch (e) {
+            console.error('Chat creation error:', e);
+            return tempChatId;
+          }
+        }
+
+        // Save user message
+        fetch('/api/messages', {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updatedAt: new Date().toISOString() })
-        }).catch(e => console.error('Chat update error:', e));
-      }
+          body: JSON.stringify({ chatId: realChatId, role: 'user', content: queryText })
+        }).catch(e => console.error('User message save error:', e));
 
-      // 2. Add user message and get history in parallel
-      let history = [];
-      if (user && !user.isVirtual) {
-        const [userMsgRes, historyRes] = await Promise.all([
-          fetch('/api/messages', {
+        // Create assistant placeholder
+        try {
+          const assistantMsgRes = await fetch('/api/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              chatId,
-              role: 'user',
-              content: queryText
-            })
-          }),
-          fetch(`/api/messages?chatId=${chatId}`)
-        ]);
-
-        const historyDocs = await historyRes.json();
-        history = historyDocs
-          .slice(-6)
-          .map((doc: any) => ({ role: doc.role, content: doc.content }))
-          .filter((m: any) => m.content !== 'Thinking...');
-      } else {
-        // Virtual mode: add user message locally
-        const userMsg: Message = {
-          id: 'vmsg_' + Date.now(),
-          chatId: chatId!,
-          role: 'user',
-          content: queryText,
-          createdAt: new Date().toISOString()
-        };
-        setVirtualMessages(prev => [...prev, userMsg]);
-        history = virtualMessages
-          .slice(-6)
-          .map(m => ({ role: m.role, content: m.content }));
-      }
-
-      // 3. Create assistant message placeholder and start search in parallel
-      let assistantMsgDoc = null;
-      const searchPromise = fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryText, history: history.slice(-5) }),
-        signal: controller.signal
-      });
-
-      if (user && !user.isVirtual) {
-        const [assistantMsgRes, searchRes] = await Promise.all([
-          fetch('/api/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chatId,
+              chatId: realChatId,
               role: 'assistant',
               content: 'Thinking...',
               sources: JSON.stringify([])
             })
-          }),
-          searchPromise
-        ]);
-        assistantMsgDoc = await assistantMsgRes.json();
-        var searchResponse = searchRes;
-      } else {
-        var searchResponse = await searchPromise;
-      }
+          });
+          const assistantMsgDoc = await assistantMsgRes.json();
+          assistantMsgId = assistantMsgDoc.$id;
+        } catch (e) {
+          console.error('Assistant placeholder error:', e);
+        }
 
-      clearTimeout(timeoutId);
+        return realChatId;
+      })();
 
-      const response = searchResponse;
-      let data;
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.indexOf("application/json") !== -1) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        throw new Error(`Server returned non-JSON response: ${text.slice(0, 100)}...`);
-      }
-
-      if (!response.ok) throw new Error(data.error || 'Search failed');
-
-      if (assistantMsgDoc && user && !user.isVirtual) {
-        await fetch(`/api/messages/${assistantMsgDoc.$id}`, {
+      // 4. Wait for AI to finish
+      await aiPromise;
+      
+      // 5. Final DB Update (Wait for dbSyncPromise to get the real assistantMsgId)
+      const realChatId = await dbSyncPromise;
+      if (assistantMsgId && realChatId) {
+        await fetch(`/api/messages/${assistantMsgId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            content: data.answer,
-            sources: JSON.stringify(data.sources || [])
+            content: finalContent,
+            sources: JSON.stringify(finalSources)
           })
-        });
-      } else if (user && user.isVirtual) {
-        // Virtual mode: add assistant response locally
-        const assistantMsg: Message = {
-          id: 'vmsg_assistant_' + Date.now(),
-          chatId: chatId!,
-          role: 'assistant',
-          content: data.answer,
-          sources: data.sources || [],
-          createdAt: new Date().toISOString()
-        };
-        setVirtualMessages(prev => [...prev, assistantMsg]);
+        }).catch(e => console.error('Assistant message update error:', e));
+        
+        // Update title if new chat
+        if (!chatId) {
+          generateChatTitle(queryText).then(newTitle => {
+            fetch(`/api/chats/${realChatId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: newTitle })
+            }).catch(e => console.error('Title update error:', e));
+          }).catch(e => console.error('Title generation error:', e));
+        }
       }
+
+      // 6. Clear streaming response ONLY after DB is updated and a small delay for polling to catch up
+      setTimeout(() => {
+        setStreamingResponse(null);
+      }, 2000);
 
       // 6. Generate a better title if it's a new chat
       if (!currentChatId && user && !user.isVirtual) {
@@ -652,6 +678,7 @@ export default function App() {
               user={user} 
               optimisticQuery={currentQuery} 
               virtualMessages={virtualMessages}
+              streamingResponse={streamingResponse}
             />
             <SearchBar onSearch={handleSearch} disabled={isSearching} chatId={currentChatId} />
           </>
