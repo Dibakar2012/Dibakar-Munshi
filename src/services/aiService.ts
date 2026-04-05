@@ -36,12 +36,8 @@ export async function processAIRequest(
 
           try {
             const data = JSON.parse(dataStr);
-            if (data.text !== undefined) {
-              if (data.replace) {
-                fullText = data.text;
-              } else {
-                fullText += data.text;
-              }
+            if (data.text) {
+              fullText += data.text;
               onChunk(fullText);
             }
             if (data.sources && onSources) {

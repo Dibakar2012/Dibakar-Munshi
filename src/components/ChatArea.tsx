@@ -270,13 +270,8 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
       return;
     }
 
-    // Don't clear messages immediately if transitioning from a temp ID to a real ID
-    // This prevents the "disappearing" effect
-    if (!chatId.startsWith('temp_')) {
-      setMsgLimit(INITIAL_LIMIT);
-      setHasMore(true);
-    }
-    
+    setMsgLimit(INITIAL_LIMIT);
+    setHasMore(true);
     fetchMessages();
 
     // Optimized Polling: Poll faster when searching, slower otherwise to save 1GB RAM resources

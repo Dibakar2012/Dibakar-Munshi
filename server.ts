@@ -345,56 +345,34 @@ const startServer = async () => {
     res.setHeader('Connection', 'keep-alive');
 
     try {
-      const input = query.toLowerCase().trim();
+      // 1. Quick Local Router
+      const casualKeywords = ['hi', 'hello', 'hey', 'namaste', 'who are you', 'who made you', 'dibakar'];
+      const isLikelyCasual = casualKeywords.some(kw => query.toLowerCase().includes(kw)) && query.split(' ').length < 8;
 
-      // 1. SmartRouter Logic (from user JSON)
-      const greetingWords = ['hi', 'hello', 'hey', 'namaste', 'namaskar', 'good morning', 'good evening', 'good night', 'good afternoon', 'bye', 'alvida', 'thanks', 'shukriya', 'dhanyavad', 'thank you', 'ok', 'okay', 'haan', 'nahi', 'theek hai', 'accha', 'hmm', 'hii', 'helo', 'helloo', 'hiii', 'hiiii', 'yo', 'sup', 'wassup'];
-      const fillerWords = ['bhai', 'bro', 'dost', 'yaar', 'ji', 'sir', 'madam', 'boss', 'buddy', 'friend', 'dear', 'vai', 'da', 'di', 're', 'be'];
-      
-      const words = input.replace(/[!?.,]+/g, '').split(/\s+/).filter(w => w.length > 0);
-      const meaningfulWords = words.filter(w => !fillerWords.includes(w));
-      const isGreeting = meaningfulWords.length <= 2 && meaningfulWords.some(w => greetingWords.includes(w));
+      let route = "search";
+      if (isLikelyCasual) {
+        route = "casual";
+      } else {
+        const routerCompletion = await groq.chat.completions.create({
+          messages: [
+            { role: "system", content: "Reply only 'casual' or 'search'." },
+            { role: "user", content: query }
+          ],
+          model: "llama-3.1-8b-instant",
+          temperature: 0,
+        });
+        route = routerCompletion.choices[0]?.message?.content?.toLowerCase().trim() || "search";
+      }
 
-      const casualPatterns = [
-        /tujhe kisne banaya/i, /tera naam/i, /tu kaun/i, /who made you/i, /your name/i, /who are you/i,
-        /what is your name/i, /what's your name/i, /apka naam/i, /aapka naam/i,
-        /dibakar (kaun|kon|ke baare|ka birthday|ki birthday|ke papa|ki mummy|ki bahan|ki sister|munshi)/i,
-        /dibakar ke bare/i, /dibakar ko kisne/i, /tell me about dibakar/i,
-        /kaise ho/i, /kya haal/i, /how are you/i, /kya chal raha/i,
-        /creator/i, /banane wala/i, /made you/i, /created you/i, /built you/i,
-        /^(kya|kaise|kaisa) (hai|ho|chal).*$/i
-      ];
-
-      const isCasualPattern = casualPatterns.some(pattern => pattern.test(input));
-      const isCasual = isGreeting || isCasualPattern;
-
-      if (isCasual) {
-        // CasualAgent Path
+      if (route.includes("casual")) {
         const stream = await groq.chat.completions.create({
           messages: [
-            { 
-              role: "system", 
-              content: `Tu Dibakar AI Brain hai. Tujhe Dibakar Munshi ne banaya hai.
-===== DIBAKAR MUNSHI KI INFO =====
-- Naam: Dibakar Munshi
-- Kaun hai: Ek student hai
-- Date of Birth: 4 September 2012
-- Father ka naam: Kartick Munshi
-- Mother ka naam: Dipa Munshi
-- Chhoti Bahan ka naam: Mousumi Munshi
-- Usne tujhe (Dibakar AI Brain ko) banaya hai
-================================
-STRICT RULES:
-1. SIRF upar wali info use kar.
-2. Chhota jawab de. Max 2-3 line.
-3. User ki bhasha mein bol.` 
-            },
+            { role: "system", content: "Tu Dibakar AI Brain hai. Dibakar Munshi ne banaya hai. Chhota jawab de." },
             ...history.map((h: any) => ({ role: h.role, content: h.content })),
             { role: "user", content: query }
           ],
           model: "llama-3.1-8b-instant",
           stream: true,
-          temperature: 0.1,
         });
 
         for await (const chunk of stream) {
@@ -403,59 +381,34 @@ STRICT RULES:
         }
       } else {
         // Search Path
-        res.write(`data: ${JSON.stringify({ text: "🔍 Searching the web..." })}\n\n`);
-
-        const serperRes = await axios.post(
-          "https://google.serper.dev/search",
-          { q: query, num: 3 },
-          { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 5000 }
-        ).catch(() => ({ data: { organic: [] } }));
-
-        const sources = serperRes.data.organic || [];
-        const context = sources.map((s: any, i: number) => `--- Result #${i+1} ---\nTitle: ${s.title}\nURL: ${s.link}\nContent: ${s.snippet}`).join("\n\n");
-        
-        // Difficulty Check (from user JSON)
-        const hardKeywords = ['explain', 'analyze', 'analyse', 'compare', 'difference', 'vs', 'versus', 'science', 'physics', 'chemistry', 'biology', 'math', 'mathematics', 'quantum', 'relativity', 'algorithm', 'programming', 'code', 'philosophy', 'psychology', 'economics', 'theory', 'detail', 'detailed', 'in-depth', 'comprehensive', 'elaborate', 'how does', 'how do', 'why does', 'why do', 'mechanism', 'samjhao', 'samjha do', 'detail mein', 'achhe se', 'pura batao', 'bishoy', 'byakhya', 'difference between', 'climate change', 'artificial intelligence', 'machine learning', 'blockchain', 'cryptocurrency', 'geopolitics', 'nuclear', 'constitution', 'amendment', 'supreme court', 'medical', 'disease', 'treatment', 'diagnosis', 'research', 'study', 'paper', 'thesis', 'history of', 'origin of', 'evolution of', 'architecture', 'engineering', 'space', 'nasa', 'isro'];
-        const isHard = hardKeywords.some(kw => input.includes(kw)) || query.split(' ').length > 12;
-        
-        res.write(`data: ${JSON.stringify({ text: "", sources: sources.map((s: any) => ({ title: s.title, link: s.link })) })}\n\n`);
-
-        const model = isHard ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
-        const systemPrompt = isHard 
-          ? `Tu Dibakar AI Brain hai — Dibakar Munshi ka banaya hua ADVANCED AI assistant.
-TERA KAAM:
-1. Search data dhyan se padh.
-2. EXPERT-LEVEL jawab de.
-FORMAT:
-📝 **Jawab:** (3-4 line main answer)
-📋 **Detail mein samjho:** (Bullet points, 2-3 lines each)
-💡 **Kya Interesting Hai:** (Fascinating facts)`
-          : `Tu Dibakar AI Brain hai — Dibakar Munshi ka banaya hua smart AI assistant.
-TERA KAAM:
-1. Search data padh kar accurate jawab de.
-FORMAT:
-📝 **Seedha Jawab:** (2-3 line main answer)
-📋 **Detail mein:** (Bullet points)
-💡 **Extra Info:** (Interesting info)`;
+        let context = "";
+        let sources: any[] = [];
+        try {
+          const serperRes = await axios.post(
+            "https://google.serper.dev/search",
+            { q: query, num: 3 },
+            { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 5000 }
+          );
+          sources = serperRes.data.organic || [];
+          context = sources.map((s: any, i: number) => `Source ${i+1}: ${s.title}\nURL: ${s.link}\nSnippet: ${s.snippet}`).join("\n\n");
+          res.write(`data: ${JSON.stringify({ sources: sources.map(s => ({ title: s.title, link: s.link })) })}\n\n`);
+        } catch (e) {
+          console.error("Serper error:", e);
+        }
 
         const stream = await groq.chat.completions.create({
           messages: [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: "Tu Dibakar AI Brain hai. Search results use kar ke detailed jawab de." },
             ...history.map((h: any) => ({ role: h.role, content: h.content })),
-            { role: "user", content: `User ka sawaal: ${query}\n\n${context}` }
+            { role: "user", content: `Context:\n${context}\n\nQuery: ${query}` }
           ],
-          model: model,
+          model: "llama-3.3-70b-versatile",
           stream: true,
-          temperature: 0.4,
         });
 
-        let firstChunk = true;
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content || "";
-          if (content) {
-            res.write(`data: ${JSON.stringify({ text: content, replace: firstChunk })}\n\n`);
-            firstChunk = false;
-          }
+          if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
         }
       }
       res.write('data: [DONE]\n\n');
