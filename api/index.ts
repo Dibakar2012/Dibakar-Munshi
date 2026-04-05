@@ -184,7 +184,7 @@ app.post("/api/user/sync", async (req, res) => {
         uid
       );
     } catch (err: any) {
-      if (err.code === 404) {
+      if (err.code === 404 || err.message.includes("not found")) {
         const isAdminEmail = 
           email?.toLowerCase() === "munshidipa62@gmail.com" || 
           email?.toLowerCase() === "munshidipa@gmail.com" || 
@@ -214,12 +214,24 @@ app.post("/api/user/sync", async (req, res) => {
     
     // If it's an Auth, Permission, or Project ID error, return a "Virtual Profile"
     // so the user can still use the app while they fix the environment variables.
-    if (error.code === 401 || error.code === 403 || error.message.includes("project ID")) {
+    const isProjectIdMissing = !APPWRITE_PROJECT_ID || APPWRITE_PROJECT_ID === "";
+    const isApiKeyMissing = !APPWRITE_API_KEY || APPWRITE_API_KEY === "";
+    
+    if (error.code === 401 || error.code === 403 || error.message.includes("project ID") || error.message.includes("Project not found") || isProjectIdMissing) {
       console.warn("Appwrite Config Error. Returning virtual profile.");
       const isAdminEmail = 
         email?.toLowerCase() === "munshidipa62@gmail.com" || 
         email?.toLowerCase() === "dibakar61601@gmail.com";
         
+      let warningMessage = "Appwrite Configuration Error.";
+      if (isProjectIdMissing) {
+        warningMessage = "Appwrite Project ID Missing: Please add 'APPWRITE_PROJECT_ID' to your Vercel Environment Variables.";
+      } else if (error.message.includes("project ID") || error.message.includes("Project not found")) {
+        warningMessage = `Appwrite Project ID Error: The ID "${APPWRITE_PROJECT_ID.slice(0, 4)}..." is incorrect or the project doesn't exist.`;
+      } else if (isApiKeyMissing || error.code === 401) {
+        warningMessage = "Appwrite API Key Error: Your 'APPWRITE_API_KEY' is missing or incorrect in Vercel settings.";
+      }
+
       return res.json({
         $id: uid,
         name: name || 'User',
@@ -228,13 +240,149 @@ app.post("/api/user/sync", async (req, res) => {
         credits: isAdminEmail ? 999999 : 10,
         createdAt: new Date().toISOString(),
         isVirtual: true,
-        warning: error.message.includes("project ID")
-          ? "Appwrite Project ID Error: Your APPWRITE_PROJECT_ID is missing or incorrect in Vercel settings."
-          : "Appwrite Authentication Error: Your APPWRITE_API_KEY is incorrect or missing scopes."
+        warning: warningMessage
       });
     }
 
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Streaming AI Route
+app.post("/api/ai/stream", async (req, res) => {
+  const { query, history = [] } = req.body;
+  if (!query) return res.status(400).json({ error: "Query is required" });
+  if (!GROQ_API_KEY || !SERPER_API_KEY) {
+    return res.status(500).json({ error: "API keys are missing." });
+  }
+
+  const groq = new Groq({ apiKey: GROQ_API_KEY });
+
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  try {
+    const input = query.toLowerCase().trim();
+
+    // 1. SmartRouter Logic (from user JSON)
+    const greetingWords = ['hi', 'hello', 'hey', 'namaste', 'namaskar', 'good morning', 'good evening', 'good night', 'good afternoon', 'bye', 'alvida', 'thanks', 'shukriya', 'dhanyavad', 'thank you', 'ok', 'okay', 'haan', 'nahi', 'theek hai', 'accha', 'hmm', 'hii', 'helo', 'helloo', 'hiii', 'hiiii', 'yo', 'sup', 'wassup'];
+    const fillerWords = ['bhai', 'bro', 'dost', 'yaar', 'ji', 'sir', 'madam', 'boss', 'buddy', 'friend', 'dear', 'vai', 'da', 'di', 're', 'be'];
+    
+    const words = input.replace(/[!?.,]+/g, '').split(/\s+/).filter(w => w.length > 0);
+    const meaningfulWords = words.filter(w => !fillerWords.includes(w));
+    const isGreeting = meaningfulWords.length <= 2 && meaningfulWords.some(w => greetingWords.includes(w));
+
+    const casualPatterns = [
+      /tujhe kisne banaya/i, /tera naam/i, /tu kaun/i, /who made you/i, /your name/i, /who are you/i,
+      /what is your name/i, /what's your name/i, /apka naam/i, /aapka naam/i,
+      /dibakar (kaun|kon|ke baare|ka birthday|ki birthday|ke papa|ki mummy|ki bahan|ki sister|munshi)/i,
+      /dibakar ke bare/i, /dibakar ko kisne/i, /tell me about dibakar/i,
+      /kaise ho/i, /kya haal/i, /how are you/i, /kya chal raha/i,
+      /creator/i, /banane wala/i, /made you/i, /created you/i, /built you/i,
+      /^(kya|kaise|kaisa) (hai|ho|chal).*$/i
+    ];
+
+    const isCasualPattern = casualPatterns.some(pattern => pattern.test(input));
+    const isCasual = isGreeting || isCasualPattern;
+
+    if (isCasual) {
+      // CasualAgent Path
+      const stream = await groq.chat.completions.create({
+        messages: [
+          { 
+            role: "system", 
+            content: `Tu Dibakar AI Brain hai. Tujhe Dibakar Munshi ne banaya hai.
+===== DIBAKAR MUNSHI KI INFO =====
+- Naam: Dibakar Munshi
+- Kaun hai: Ek student hai
+- Date of Birth: 4 September 2012
+- Father ka naam: Kartick Munshi
+- Mother ka naam: Dipa Munshi
+- Chhoti Bahan ka naam: Mousumi Munshi
+- Usne tujhe (Dibakar AI Brain ko) banaya hai
+================================
+STRICT RULES:
+1. SIRF upar wali info use kar.
+2. Chhota jawab de. Max 2-3 line.
+3. User ki bhasha mein bol.` 
+          },
+          ...history.map((h: any) => ({ role: h.role, content: h.content })),
+          { role: "user", content: query }
+        ],
+        model: "llama-3.1-8b-instant",
+        stream: true,
+        temperature: 0.1,
+      });
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+      }
+    } else {
+      // Search Path
+      res.write(`data: ${JSON.stringify({ text: "🔍 Searching the web..." })}\n\n`);
+
+      const serperRes = await axios.post(
+        "https://google.serper.dev/search",
+        { q: query, num: 3 },
+        { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 5000 }
+      ).catch(() => ({ data: { organic: [] } }));
+
+      const sources = serperRes.data.organic || [];
+      const context = sources.map((s: any, i: number) => `--- Result #${i+1} ---\nTitle: ${s.title}\nURL: ${s.link}\nContent: ${s.snippet}`).join("\n\n");
+      
+      // Difficulty Check (from user JSON)
+      const hardKeywords = ['explain', 'analyze', 'analyse', 'compare', 'difference', 'vs', 'versus', 'science', 'physics', 'chemistry', 'biology', 'math', 'mathematics', 'quantum', 'relativity', 'algorithm', 'programming', 'code', 'philosophy', 'psychology', 'economics', 'theory', 'detail', 'detailed', 'in-depth', 'comprehensive', 'elaborate', 'how does', 'how do', 'why does', 'why do', 'mechanism', 'samjhao', 'samjha do', 'detail mein', 'achhe se', 'pura batao', 'bishoy', 'byakhya', 'difference between', 'climate change', 'artificial intelligence', 'machine learning', 'blockchain', 'cryptocurrency', 'geopolitics', 'nuclear', 'constitution', 'amendment', 'supreme court', 'medical', 'disease', 'treatment', 'diagnosis', 'research', 'study', 'paper', 'thesis', 'history of', 'origin of', 'evolution of', 'architecture', 'engineering', 'space', 'nasa', 'isro'];
+      const isHard = hardKeywords.some(kw => input.includes(kw)) || query.split(' ').length > 12;
+      
+      res.write(`data: ${JSON.stringify({ text: "", sources: sources.map((s: any) => ({ title: s.title, link: s.link })) })}\n\n`);
+
+      const model = isHard ? "llama-3.3-70b-versatile" : "llama-3.1-8b-instant";
+      const systemPrompt = isHard 
+        ? `Tu Dibakar AI Brain hai — Dibakar Munshi ka banaya hua ADVANCED AI assistant.
+TERA KAAM:
+1. Search data dhyan se padh.
+2. EXPERT-LEVEL jawab de.
+FORMAT:
+📝 **Jawab:** (3-4 line main answer)
+📋 **Detail mein samjho:** (Bullet points, 2-3 lines each)
+💡 **Kya Interesting Hai:** (Fascinating facts)`
+        : `Tu Dibakar AI Brain hai — Dibakar Munshi ka banaya hua smart AI assistant.
+TERA KAAM:
+1. Search data padh kar accurate jawab de.
+FORMAT:
+📝 **Seedha Jawab:** (2-3 line main answer)
+📋 **Detail mein:** (Bullet points)
+💡 **Extra Info:** (Interesting info)`;
+
+      const stream = await groq.chat.completions.create({
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...history.map((h: any) => ({ role: h.role, content: h.content })),
+          { role: "user", content: `User ka sawaal: ${query}\n\n${context}` }
+        ],
+        model: model,
+        stream: true,
+        temperature: 0.4,
+      });
+
+      let firstChunk = true;
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || "";
+        if (content) {
+          res.write(`data: ${JSON.stringify({ text: content, replace: firstChunk })}\n\n`);
+          firstChunk = false;
+        }
+      }
+    }
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (error: any) {
+    console.error("Streaming AI Error Vercel:", error.message);
+    res.write(`data: ${JSON.stringify({ error: "Failed to process AI request" })}\n\n`);
+    res.end();
   }
 });
 
@@ -608,7 +756,7 @@ app.post("/api/search", async (req, res) => {
       }
     }
 
-    // 3. Generate Final Answer with Streaming
+    // 3. Generate Final Answer
     const systemInstruction = isGreeting 
       ? `Tu Dibakar AI Brain hai. Ek smart aur friendly assistant. Seedha point pe aa. Chhota jawab de. 1-2 line kaafi hai greeting ke liye. Natural baat kar jaise ek dost se baat kar raha hai. User jis bhasha mein bole usi mein bol.`
       : `Tu Dibakar AI Brain hai - Perplexity jaisa powerful search assistant. Tujhe top search results milte hain user ke sawaal ke baare mein. Tera kaam hai:
@@ -623,95 +771,61 @@ app.post("/api/search", async (req, res) => {
 Context:
 ${context || "No web context available. Answer from your own knowledge."}`;
 
-    // Set headers for SSE
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable buffering for SSE
-    
-    // Send initial heartbeat to flush headers
-    res.write(': heartbeat\n\n');
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        { role: "system", content: systemInstruction }, 
+        ...history.map((h: any) => ({ role: h.role, content: h.content })), 
+        { role: "user", content: query }
+      ],
+      model: "llama-3.3-70b-versatile",
+      temperature: 0.5,
+    }, { timeout: 25000 });
 
+    const answer = chatCompletion.choices[0]?.message?.content || "I'm sorry, I couldn't generate an answer.";
+    const llamaTokens = chatCompletion.usage?.total_tokens || 0;
+
+    // Record Usage in Appwrite
     try {
-      const stream = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemInstruction }, 
-          ...history.map((h: any) => ({ role: h.role, content: h.content })), 
-          { role: "user", content: query }
-        ],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.5,
-        stream: true,
-      });
-
-      let fullAnswer = "";
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        if (content) {
-          fullAnswer += content;
-          res.write(`data: ${JSON.stringify({ type: 'content', delta: content })}\n\n`);
-        }
-      }
-
-      console.log(`[Search API] Stream finished. Length: ${fullAnswer.length}`);
-      
-      // Record Usage in Appwrite (Background)
-      const recordUsage = async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const updateStats = async (docId: string) => {
         try {
-          const today = new Date().toISOString().split('T')[0];
-          const updateStats = async (docId: string) => {
-            try {
-              let doc;
-              try {
-                doc = await appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId);
-              } catch (err: any) {
-                if (err.code === 404) {
-                  await appwriteDatabases.createDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
-                    totalRequests: 1,
-                    llamaTokens: 0,
-                    serperRequests: context ? 1 : 0,
-                    lastUpdated: new Date().toISOString(),
-                    date: today
-                  });
-                  return;
-                }
-                throw err;
-              }
-              await appwriteDatabases.updateDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
-                totalRequests: (doc.totalRequests || 0) + 1,
-                llamaTokens: (doc.llamaTokens || 0) + 0,
-                serperRequests: (doc.serperRequests || 0) + (context ? 1 : 0),
-                lastUpdated: new Date().toISOString()
+          let doc;
+          try {
+            doc = await appwriteDatabases.getDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId);
+          } catch (err: any) {
+            if (err.code === 404) {
+              await appwriteDatabases.createDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
+                totalRequests: 1,
+                llamaTokens: llamaTokens,
+                serperRequests: context ? 1 : 0,
+                lastUpdated: new Date().toISOString(),
+                date: today
               });
-            } catch (innerErr: any) {
-              console.error(`[Appwrite Vercel Stats] Error updating ${docId}:`, innerErr.message);
+              return;
             }
-          };
-          await Promise.all([updateStats(`daily_${today}`), updateStats('global')]);
-        } catch (dbErr) {}
+            throw err;
+          }
+          await appwriteDatabases.updateDocument(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.stats, docId, {
+            totalRequests: (doc.totalRequests || 0) + 1,
+            llamaTokens: (doc.llamaTokens || 0) + llamaTokens,
+            serperRequests: (doc.serperRequests || 0) + (context ? 1 : 0),
+            lastUpdated: new Date().toISOString()
+          });
+        } catch (innerErr: any) {
+          console.error(`[Appwrite Vercel Stats] Error updating ${docId}:`, innerErr.message);
+        }
       };
-      recordUsage();
+      await Promise.all([updateStats(`daily_${today}`), updateStats('global')]);
+    } catch (dbErr) {}
 
-      // Send final metadata
-      res.write(`data: ${JSON.stringify({ 
-        type: 'done', 
-        sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })),
-        fullAnswer
-      })}\n\n`);
-    } catch (streamErr: any) {
-      console.error("[Search API] Streaming Error:", streamErr.message);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: streamErr.message })}\n\n`);
-    } finally {
-      res.end();
-    }
+    res.json({ 
+      answer, 
+      sources: sources.map(s => ({ title: s.title, link: s.link, snippet: s.snippet })), 
+      usage: { llamaTokens, serperRequests: context ? 1 : 0 } 
+    });
   } catch (error: any) {
     console.error("Search API Error Vercel:", error.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to process search request" });
-    } else {
-      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
-      res.end();
-    }
+    res.status(500).json({ error: "Failed to process search request" });
   }
 });
 
