@@ -352,12 +352,11 @@ export default function App() {
 
       // 4. Wait for AI to finish
       await aiPromise;
-      setStreamingResponse(null);
-
+      
       // 5. Final DB Update (Wait for dbSyncPromise to get the real assistantMsgId)
       const realChatId = await dbSyncPromise;
       if (assistantMsgId && realChatId) {
-        fetch(`/api/messages/${assistantMsgId}`, {
+        await fetch(`/api/messages/${assistantMsgId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -377,6 +376,11 @@ export default function App() {
           }).catch(e => console.error('Title generation error:', e));
         }
       }
+
+      // 6. Clear streaming response ONLY after DB is updated and a small delay for polling to catch up
+      setTimeout(() => {
+        setStreamingResponse(null);
+      }, 2000);
 
       // 6. Generate a better title if it's a new chat
       if (!currentChatId && user && !user.isVirtual) {

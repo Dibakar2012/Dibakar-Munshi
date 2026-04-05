@@ -345,34 +345,26 @@ const startServer = async () => {
     res.setHeader('Connection', 'keep-alive');
 
     try {
-      // 1. Quick Local Router
-      const casualKeywords = ['hi', 'hello', 'hey', 'namaste', 'who are you', 'who made you', 'dibakar'];
-      const isLikelyCasual = casualKeywords.some(kw => query.toLowerCase().includes(kw)) && query.split(' ').length < 8;
+      // 1. Parallelize Routing and Search if needed
+      // Comprehensive Hinglish casual keywords
+      const casualKeywords = [
+        'hi', 'hello', 'hey', 'namaste', 'who are you', 'who made you', 'dibakar', 
+        'kaise ho', 'kya haal', 'kya kar rahe ho', 'kaun ho', 'kya chal raha',
+        'theek ho', 'good morning', 'good night', 'bye', 'tata', 'shukriya', 'thanks'
+      ];
+      const queryLower = query.toLowerCase();
+      const isLikelyCasual = casualKeywords.some(kw => queryLower.includes(kw)) && query.split(' ').length < 6;
 
-      let route = "search";
       if (isLikelyCasual) {
-        route = "casual";
-      } else {
-        const routerCompletion = await groq.chat.completions.create({
-          messages: [
-            { role: "system", content: "Reply only 'casual' or 'search'." },
-            { role: "user", content: query }
-          ],
-          model: "llama-3.1-8b-instant",
-          temperature: 0,
-        });
-        route = routerCompletion.choices[0]?.message?.content?.toLowerCase().trim() || "search";
-      }
-
-      if (route.includes("casual")) {
         const stream = await groq.chat.completions.create({
           messages: [
-            { role: "system", content: "Tu Dibakar AI Brain hai. Dibakar Munshi ne banaya hai. Chhota jawab de." },
+            { role: "system", content: "Tu Dibakar AI Brain hai. Dibakar Munshi ne banaya hai. Chhota, friendly aur fast jawab de Hinglish mein." },
             ...history.map((h: any) => ({ role: h.role, content: h.content })),
             { role: "user", content: query }
           ],
           model: "llama-3.1-8b-instant",
           stream: true,
+          temperature: 0.7,
         });
 
         for await (const chunk of stream) {
@@ -380,35 +372,45 @@ const startServer = async () => {
           if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
         }
       } else {
-        // Search Path
-        let context = "";
-        let sources: any[] = [];
-        try {
-          const serperRes = await axios.post(
-            "https://google.serper.dev/search",
-            { q: query, num: 3 },
-            { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 5000 }
-          );
-          sources = serperRes.data.organic || [];
-          context = sources.map((s: any, i: number) => `Source ${i+1}: ${s.title}\nURL: ${s.link}\nSnippet: ${s.snippet}`).join("\n\n");
-          res.write(`data: ${JSON.stringify({ sources: sources.map(s => ({ title: s.title, link: s.link })) })}\n\n`);
-        } catch (e) {
-          console.error("Serper error:", e);
-        }
+        // Search Path - Start Search immediately
+        // Send a "Searching..." status to the UI
+        res.write(`data: ${JSON.stringify({ text: "🔍 Searching the web for you..." })}\n\n`);
+
+        const serperPromise = axios.post(
+          "https://google.serper.dev/search",
+          { q: query, num: 4 },
+          { headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" }, timeout: 3500 }
+        ).catch(e => {
+          console.error("Serper error:", e.message);
+          return { data: { organic: [] } };
+        });
+
+        const serperRes = await serperPromise;
+        const sources = serperRes.data.organic || [];
+        const context = sources.map((s: any, i: number) => `Source ${i+1}: ${s.title}\nURL: ${s.link}\nSnippet: ${s.snippet}`).join("\n\n");
+        
+        // Clear the "Searching..." message and send sources
+        res.write(`data: ${JSON.stringify({ text: "", sources: sources.map((s: any) => ({ title: s.title, link: s.link })) })}\n\n`);
 
         const stream = await groq.chat.completions.create({
           messages: [
-            { role: "system", content: "Tu Dibakar AI Brain hai. Search results use kar ke detailed jawab de." },
+            { role: "system", content: "Tu Dibakar AI Brain hai. Search results use kar ke fast aur accurate jawab de Hinglish mein. Jawab seedha aur kaam ki baat wala hona chahiye." },
             ...history.map((h: any) => ({ role: h.role, content: h.content })),
             { role: "user", content: `Context:\n${context}\n\nQuery: ${query}` }
           ],
-          model: "llama-3.3-70b-versatile",
+          model: "llama-3.1-8b-instant", // Switched to 8b for maximum speed
           stream: true,
+          temperature: 0.4,
         });
 
+        let firstChunk = true;
         for await (const chunk of stream) {
           const content = chunk.choices[0]?.delta?.content || "";
-          if (content) res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+          if (content) {
+            // If it's the first chunk of the actual answer, we might want to clear the "Searching" text if not already cleared
+            res.write(`data: ${JSON.stringify({ text: content, replace: firstChunk })}\n\n`);
+            firstChunk = false;
+          }
         }
       }
       res.write('data: [DONE]\n\n');
