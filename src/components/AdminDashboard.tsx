@@ -816,13 +816,12 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                           
                           <AnimatePresence>
                             {activeMenuId === user.uid && (
-                              <React.Fragment key={`menu-fragment-${user.uid}`}>
+                              <>
                                 <div 
                                   className="fixed inset-0 z-40" 
                                   onClick={() => setActiveMenuId(null)}
                                 />
                                 <motion.div
-                                  key={`menu-content-${user.uid}`}
                                   initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                   animate={{ opacity: 1, scale: 1, y: 0 }}
                                   exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -857,7 +856,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                                     Delete User
                                   </button>
                                 </motion.div>
-                              </React.Fragment>
+                              </>
                             )}
                           </AnimatePresence>
                         </div>

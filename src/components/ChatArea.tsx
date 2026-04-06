@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { databases, APPWRITE_CONFIG, Query } from '../lib/appwrite';
 import { Message, SearchSource, UserProfile } from '../types';
 import ReactMarkdown from 'react-markdown';
@@ -9,9 +9,10 @@ import { cn } from '../lib/utils';
 const INITIAL_LIMIT = 20;
 
 function cleanMessageContent(content: string) {
-  // Only remove bracketed citations like [1], [2]
-  // We keep the rest of the content to respect the AI's formatted output
+  // Remove common source/reference headers and everything after them
+  // Also remove bracketed citations like [1], [2]
   return content
+    .replace(/(?:\n|^)(?:Sources|References|संदर्भ|উৎস|Links|Citations|Source|📌 Sources):[\s\S]*$/i, '')
     .replace(/\[\d+\]/g, '')
     .trim();
 }
@@ -22,7 +23,6 @@ interface ChatAreaProps {
   user: UserProfile | null;
   optimisticQuery?: string | null;
   virtualMessages?: Message[];
-  streamingResponse?: { content: string; sources: SearchSource[] } | null;
 }
 
 function SourcesToggle({ sources }: { sources: SearchSource[] }) {
@@ -182,7 +182,7 @@ function FeedbackButtons({ chatId, messageId, feedback, onUpdate }: { chatId: st
   );
 }
 
-export default function ChatArea({ chatId, isSearching, user, optimisticQuery, virtualMessages = [], streamingResponse }: ChatAreaProps) {
+export default function ChatArea({ chatId, isSearching, user, optimisticQuery, virtualMessages = [] }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -203,12 +203,7 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
   const fetchMessages = async () => {
     if (!chatId) return;
     if (chatId.startsWith('virtual_')) {
-      const sortedVirtual = [...virtualMessages].sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateA - dateB;
-      });
-      setMessages(sortedVirtual);
+      setMessages(virtualMessages);
       return;
     }
     try {
@@ -224,19 +219,7 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
         sources: doc.sources ? JSON.parse(doc.sources) : [],
         feedback: doc.feedback,
         createdAt: doc.createdAt
-      } as Message)).sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        
-        if (dateA !== dateB) {
-          return dateA - dateB;
-        }
-        
-        if (a.role === 'user' && b.role === 'assistant') return -1;
-        if (a.role === 'assistant' && b.role === 'user') return 1;
-        
-        return 0;
-      });
+      } as Message));
       
       setMessages(newMessages);
       
@@ -270,17 +253,12 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
       return;
     }
 
-    // Don't clear messages immediately if transitioning from a temp ID to a real ID
-    // This prevents the "disappearing" effect
-    if (!chatId.startsWith('temp_')) {
-      setMsgLimit(INITIAL_LIMIT);
-      setHasMore(true);
-    }
-    
+    setMsgLimit(INITIAL_LIMIT);
+    setHasMore(true);
     fetchMessages();
 
     // Optimized Polling: Poll faster when searching, slower otherwise to save 1GB RAM resources
-    const pollInterval = isSearching ? 2000 : 8000;
+    const pollInterval = isSearching ? 1500 : 8000;
     const interval = setInterval(fetchMessages, pollInterval);
     return () => clearInterval(interval);
   }, [chatId, msgLimit, isSearching]);
@@ -300,7 +278,7 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
       }, 50);
       return () => clearTimeout(timeoutId);
     }
-  }, [messages, isSearching, optimisticQuery, userScrolledUp, streamingResponse]);
+  }, [messages, isSearching, optimisticQuery, userScrolledUp]);
 
   // Maintain scroll position when loading more
   useEffect(() => {
@@ -344,55 +322,6 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
       }, 500);
     }
   };
-
-  const displayMessages = useMemo(() => {
-    const combined = [...messages];
-    
-    // Add optimistic user query
-    if (isSearching && optimisticQuery && !messages.some(m => m.content === optimisticQuery && m.role === 'user')) {
-      combined.push({
-        id: 'optimistic-user',
-        role: 'user',
-        content: optimisticQuery,
-        createdAt: new Date().toISOString()
-      } as Message);
-    }
-
-    // Add streaming assistant response for non-virtual users
-    if (isSearching && streamingResponse && !chatId?.startsWith('virtual_')) {
-      // Find if there's already a "Thinking..." message to replace
-      const thinkingIdx = combined.findIndex(m => m.content === 'Thinking...' && m.role === 'assistant');
-      if (thinkingIdx !== -1) {
-        combined[thinkingIdx] = {
-          ...combined[thinkingIdx],
-          content: streamingResponse.content,
-          sources: streamingResponse.sources
-        };
-      } else {
-        combined.push({
-          id: 'streaming-assistant',
-          role: 'assistant',
-          content: streamingResponse.content,
-          sources: streamingResponse.sources,
-          createdAt: new Date().toISOString()
-        } as Message);
-      }
-    }
-
-    return combined.sort((a, b) => {
-      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      
-      if (dateA !== dateB) {
-        return dateA - dateB;
-      }
-      
-      if (a.role === 'user' && b.role === 'assistant') return -1;
-      if (a.role === 'assistant' && b.role === 'user') return 1;
-      
-      return 0;
-    });
-  }, [messages, isSearching, optimisticQuery, streamingResponse, chatId]);
 
   if (!chatId) {
     return (
@@ -444,7 +373,7 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
       )}
 
       <AnimatePresence initial={false}>
-        {displayMessages.map((msg, idx) => (
+        {messages.map((msg, idx) => (
           <motion.div
             key={msg.id || idx}
             initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -507,12 +436,31 @@ export default function ChatArea({ chatId, isSearching, user, optimisticQuery, v
           </motion.div>
         ))}
 
-        {/* Thinking State */}
-        {isSearching && (
-          (displayMessages.length > 0 && displayMessages[displayMessages.length - 1].role === 'user')
-        ) && (
+        {/* Optimistic User Message */}
+        {isSearching && optimisticQuery && !messages.some(m => m.content === optimisticQuery && m.role === 'user') && (
           <motion.div
-            key="thinking-state"
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full"
+          >
+            <div className="flex gap-3 md:gap-6 max-w-3xl mx-auto w-full justify-end">
+              <div className="flex flex-col items-end max-w-[85%] ml-auto gap-2">
+                <div className="px-4 py-2.5 rounded-[1.5rem] rounded-tr-none bg-primary text-white shadow-lg w-fit max-w-full">
+                  <div className="text-white font-semibold prose prose-sm md:prose-base max-w-none leading-relaxed">
+                    <ReactMarkdown>{optimisticQuery}</ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+              <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-surface border border-border flex items-center justify-center shrink-0">
+                <User className="w-3.5 h-3.5 md:w-4.5 md:h-4.5" />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Thinking State */}
+        {isSearching && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
+          <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="flex gap-3 md:gap-6 max-w-3xl mx-auto w-full justify-start"

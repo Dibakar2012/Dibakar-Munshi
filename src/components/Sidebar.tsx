@@ -170,7 +170,6 @@ export default function Sidebar({ userId, currentChatId, onSelectChat, onNewChat
                         <AnimatePresence>
                           {menuOpenId === chat.id && (
                             <motion.div
-                              key={`menu-${chat.id}`}
                               initial={{ opacity: 0, scale: 0.95, y: 5 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               exit={{ opacity: 0, scale: 0.95, y: 5 }}
@@ -197,12 +196,10 @@ export default function Sidebar({ userId, currentChatId, onSelectChat, onNewChat
                     <AnimatePresence>
                       {deleteConfirmId === chat.id && (
                         <div 
-                          key={`delete-overlay-${chat.id}`}
                           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
                           onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(null); }}
                         >
                           <motion.div
-                            key={`delete-modal-${chat.id}`}
                             initial={{ opacity: 0, scale: 0.9, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.9, y: 20 }}
